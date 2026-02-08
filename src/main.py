@@ -14,6 +14,21 @@ import numpy as np
 from .config import SETTLEMENT_POINTS, DAM_HORIZONS, RTM_SHORT_HORIZONS
 from .models.delta_spread import get_predictor, DeltaSpreadPredictor
 from .models.dam_predictor import get_dam_predictor, DAMPredictor
+from .models.dam_simple_predictor import SimpleDAMPredictor
+from pathlib import Path
+
+# Simple DAM predictor instance (lazy loaded)
+_simple_dam_predictor = None
+
+def get_simple_dam_predictor(settlement_point: str = "HB_HOUSTON") -> SimpleDAMPredictor:
+    """Get or create simple DAM predictor."""
+    global _simple_dam_predictor
+    model_path = Path(__file__).parent.parent / "models" / f"dam_simple_{settlement_point.lower()}.joblib"
+
+    if _simple_dam_predictor is None or not _simple_dam_predictor.is_ready():
+        _simple_dam_predictor = SimpleDAMPredictor(model_path)
+
+    return _simple_dam_predictor
 
 app = FastAPI(
     title="TrueFlux Prediction Service",
@@ -24,7 +39,7 @@ app = FastAPI(
 # CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -167,6 +182,73 @@ async def dam_model_info():
         status="loaded" if dam_predictor.is_ready() else "not_loaded",
         info=dam_predictor.get_model_info()
     )
+
+
+@app.get("/predictions/dam/next-day")
+async def predict_dam_next_day(
+    settlement_point: str = Query(default="HB_HOUSTON", description="ERCOT settlement point"),
+    target_date: Optional[str] = Query(default=None, description="Target date (YYYY-MM-DD), default tomorrow"),
+):
+    """
+    Get Day-Ahead Market price predictions for next day.
+
+    Uses the simple DAM predictor with real InfluxDB data.
+    Returns predictions for all 24 hours.
+    """
+    from .data.influxdb_fetcher import create_fetcher_from_env
+    from datetime import datetime
+
+    try:
+        # Load predictor
+        predictor = get_simple_dam_predictor(settlement_point)
+
+        if not predictor.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail=f"DAM model not trained for {settlement_point}. Run training first."
+            )
+
+        # Fetch recent DAM data from InfluxDB
+        fetcher = create_fetcher_from_env()
+        dam_df = fetcher.fetch_dam_prices(settlement_point=settlement_point)
+        fetcher.close()
+
+        if dam_df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No DAM data found for {settlement_point}"
+            )
+
+        # Parse target date
+        target_dt = None
+        if target_date:
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+
+        # Generate predictions
+        predictions = predictor.predict_next_day(dam_df, target_dt)
+
+        # Format response
+        delivery_date = predictions[0].timestamp.date() if predictions else None
+
+        return {
+            "status": "success",
+            "settlement_point": settlement_point,
+            "delivery_date": str(delivery_date) if delivery_date else None,
+            "generated_at": datetime.utcnow().isoformat(),
+            "predictions": [
+                {
+                    "hour_ending": f"{p.hour_ending:02d}:00",
+                    "predicted_price": round(p.predicted_price, 2),
+                    "timestamp": p.timestamp.isoformat() if p.timestamp else None,
+                }
+                for p in predictions
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/predictions/rtm")
