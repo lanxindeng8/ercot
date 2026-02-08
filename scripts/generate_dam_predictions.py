@@ -25,9 +25,11 @@ from src.data.influxdb_fetcher import create_fetcher_from_env
 from src.data.prediction_writer import create_writer_from_env
 
 
-# Settlement points to generate predictions for
-# V2 models are trained on LZ_WEST data
-SETTLEMENT_POINTS = ["LZ_WEST", "LZ_HOUSTON", "LZ_NORTH", "LZ_SOUTH"]
+# Settlement points to generate predictions for (matching ercot-viewer)
+SETTLEMENT_POINTS = [
+    "HB_BUSAVG", "HB_HOUSTON", "HB_HUBAVG", "HB_NORTH", "HB_PAN", "HB_SOUTH", "HB_WEST",
+    "LZ_AEN", "LZ_CPS", "LZ_HOUSTON", "LZ_LCRA", "LZ_NORTH", "LZ_RAYBN", "LZ_SOUTH", "LZ_WEST",
+]
 
 
 def get_tomorrow() -> str:
