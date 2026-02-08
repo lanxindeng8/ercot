@@ -36,6 +36,9 @@ logs/
 models/*.joblib
 models/*.cbm
 models/*.pkl
+models/**/*.cbm
+models/**/*.joblib
+models/**/*.pkl
 
 # IDE
 .idea/

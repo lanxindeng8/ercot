@@ -15,6 +15,7 @@ from .config import SETTLEMENT_POINTS, DAM_HORIZONS, RTM_SHORT_HORIZONS
 from .models.delta_spread import get_predictor, DeltaSpreadPredictor
 from .models.dam_predictor import get_dam_predictor, DAMPredictor
 from .models.dam_simple_predictor import SimpleDAMPredictor
+from .models.dam_v2_predictor import get_dam_v2_predictor, DAMV2Predictor
 from pathlib import Path
 
 # Simple DAM predictor instance (lazy loaded)
@@ -75,6 +76,9 @@ async def health_check():
     dam_predictor = get_dam_predictor()
     dam_info = dam_predictor.get_model_info()
 
+    dam_v2_predictor = get_dam_v2_predictor()
+    dam_v2_info = dam_v2_predictor.get_model_info()
+
     return HealthResponse(
         status="healthy",
         timestamp=datetime.utcnow().isoformat(),
@@ -85,6 +89,7 @@ async def health_check():
             "dam_xgboost": "xgboost" in dam_info["models_loaded"],
             "dam_lightgbm": "lightgbm" in dam_info["models_loaded"],
             "dam_catboost": "catboost" in dam_info["models_loaded"],
+            "dam_v2": dam_v2_info["models_loaded"] == 24,
         }
     )
 
@@ -184,6 +189,17 @@ async def dam_model_info():
     )
 
 
+@app.get("/models/dam-v2/info", response_model=ModelInfoResponse)
+async def dam_v2_model_info():
+    """Get DAM V2 model information."""
+    dam_v2_predictor = get_dam_v2_predictor()
+    return ModelInfoResponse(
+        model_name="dam_v2",
+        status="loaded" if dam_v2_predictor.is_ready() else "not_loaded",
+        info=dam_v2_predictor.get_model_info()
+    )
+
+
 @app.get("/predictions/dam/next-day")
 async def predict_dam_next_day(
     settlement_point: str = Query(default="HB_HOUSTON", description="ERCOT settlement point"),
@@ -232,6 +248,74 @@ async def predict_dam_next_day(
 
         return {
             "status": "success",
+            "settlement_point": settlement_point,
+            "delivery_date": str(delivery_date) if delivery_date else None,
+            "generated_at": datetime.utcnow().isoformat(),
+            "predictions": [
+                {
+                    "hour_ending": f"{p.hour_ending:02d}:00",
+                    "predicted_price": round(p.predicted_price, 2),
+                    "timestamp": p.timestamp.isoformat() if p.timestamp else None,
+                }
+                for p in predictions
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/predictions/dam-v2/next-day")
+async def predict_dam_v2_next_day(
+    settlement_point: str = Query(default="LZ_WEST", description="ERCOT settlement point"),
+    target_date: Optional[str] = Query(default=None, description="Target date (YYYY-MM-DD), default tomorrow"),
+):
+    """
+    Get Day-Ahead Market price predictions for next day using V2 models.
+
+    Uses 24 per-hour CatBoost models with 35 features for improved accuracy.
+    Returns predictions for all 24 hours.
+    """
+    from .data.influxdb_fetcher import create_fetcher_from_env
+    from datetime import datetime
+
+    try:
+        # Load V2 predictor
+        predictor = get_dam_v2_predictor()
+
+        if not predictor.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="DAM V2 models not loaded. Check models/dam_v2 directory."
+            )
+
+        # Fetch recent DAM data from InfluxDB
+        fetcher = create_fetcher_from_env()
+        dam_df = fetcher.fetch_dam_prices(settlement_point=settlement_point)
+        fetcher.close()
+
+        if dam_df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No DAM data found for {settlement_point}"
+            )
+
+        # Parse target date
+        target_dt = None
+        if target_date:
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+
+        # Generate predictions
+        predictions = predictor.predict_next_day(dam_df, target_dt)
+
+        # Format response
+        delivery_date = predictions[0].timestamp.date() if predictions else None
+
+        return {
+            "status": "success",
+            "model": "DAM V2 (24 per-hour CatBoost)",
             "settlement_point": settlement_point,
             "delivery_date": str(delivery_date) if delivery_date else None,
             "generated_at": datetime.utcnow().isoformat(),
