@@ -282,7 +282,7 @@ def calculate_stats(prices: list) -> dict:
     }
 
 
-def format_message(date_str: str, rtm_stats: dict, dam_stats: dict, source: str) -> str:
+def format_message(date_str: str, rtm_stats: dict, dam_stats: dict) -> str:
     """Format the Telegram message"""
     rtm_avg = f"${rtm_stats['avg_under_threshold']:.2f}" if rtm_stats['avg_under_threshold'] else "N/A"
     rtm_icon = "✅" if rtm_stats['count'] >= RTM_EXPECTED_INTERVALS else "❓"
@@ -302,9 +302,7 @@ RTM: {rtm_data_status}
 
 DAM: {dam_data_status}
   >${PRICE_THRESHOLD:.0f}: {dam_stats['over_threshold']} hours
-  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg}
-
-[Source: {source}]"""
+  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg}"""
 
     return message
 
@@ -394,7 +392,6 @@ def main():
 
     # Fetch DAM (simpler, just SQLite then InfluxDB fallback)
     dam_prices = []
-    dam_source = "SQLite"
 
     if conn:
         dam_prices = fetch_dam_data_sqlite(conn, target_date)
@@ -405,16 +402,12 @@ def main():
         print(f"  InfluxDB DAM: {len(dam_prices_influx)} records")
         if len(dam_prices_influx) > len(dam_prices):
             dam_prices = dam_prices_influx
-            dam_source = "InfluxDB"
 
     # Close connections
     if conn:
         conn.close()
     if influx_client:
         influx_client.close()
-
-    # Determine overall source
-    source = "Mixed" if len(set(k for k, v in rtm_source_counts.items() if v > 0)) > 1 else primary_source
 
     print()
     print(f"Final data: RTM={len(rtm_prices)}, DAM={len(dam_prices)}")
@@ -424,7 +417,7 @@ def main():
     dam_stats = calculate_stats(dam_prices)
 
     # Format and send message
-    message = format_message(target_date, rtm_stats, dam_stats, source)
+    message = format_message(target_date, rtm_stats, dam_stats)
     print()
     print("Message:")
     print("-" * 40)
