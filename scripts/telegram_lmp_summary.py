@@ -273,23 +273,27 @@ def calculate_stats(prices: list) -> dict:
 
     under_prices = [p for p in prices if p <= PRICE_THRESHOLD]
     avg_under = sum(under_prices) / len(under_prices) if under_prices else None
+    avg_all = sum(prices) / len(prices) if prices else None
 
     return {
         "count": count,
         "over_threshold": over_threshold,
         "over_pct": over_pct,
         "avg_under_threshold": avg_under,
+        "avg_all": avg_all,
     }
 
 
 def format_message(date_str: str, rtm_stats: dict, dam_stats: dict) -> str:
     """Format the Telegram message"""
-    rtm_avg = f"${rtm_stats['avg_under_threshold']:.2f}" if rtm_stats['avg_under_threshold'] else "N/A"
+    rtm_avg_under = f"${rtm_stats['avg_under_threshold']:.2f}" if rtm_stats['avg_under_threshold'] else "N/A"
+    rtm_avg_all = f"${rtm_stats['avg_all']:.2f}" if rtm_stats['avg_all'] else "N/A"
     rtm_icon = "✅" if rtm_stats['count'] >= RTM_EXPECTED_INTERVALS else "❓"
     rtm_data_status = f"{rtm_stats['count']}/{RTM_EXPECTED_INTERVALS} {rtm_icon}"
     rtm_over_hours = rtm_stats['over_threshold'] / 12
 
-    dam_avg = f"${dam_stats['avg_under_threshold']:.2f}" if dam_stats['avg_under_threshold'] else "N/A"
+    dam_avg_under = f"${dam_stats['avg_under_threshold']:.2f}" if dam_stats['avg_under_threshold'] else "N/A"
+    dam_avg_all = f"${dam_stats['avg_all']:.2f}" if dam_stats['avg_all'] else "N/A"
     dam_icon = "✅" if dam_stats['count'] >= DAM_EXPECTED_HOURS else "❓"
     dam_data_status = f"{dam_stats['count']}/{DAM_EXPECTED_HOURS} {dam_icon}"
 
@@ -298,11 +302,13 @@ Date: {date_str} | {SETTLEMENT_POINT}
 
 RTM: {rtm_data_status}
   >${PRICE_THRESHOLD:.0f}: {rtm_over_hours:.1f} hours
-  Avg (<=${PRICE_THRESHOLD:.0f}): {rtm_avg}
+  Avg (<=${PRICE_THRESHOLD:.0f}): {rtm_avg_under}
+  Avg (all): {rtm_avg_all}
 
 DAM: {dam_data_status}
   >${PRICE_THRESHOLD:.0f}: {dam_stats['over_threshold']} hours
-  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg}"""
+  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg_under}
+  Avg (all): {dam_avg_all}"""
 
     return message
 
