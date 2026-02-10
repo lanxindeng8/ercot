@@ -5,24 +5,24 @@ Telegram Bot: Daily LMP Summary
 Sends daily summary of ERCOT LMP data (RTM & DAM) to Telegram.
 Runs at 2 AM daily to report on previous day's data.
 
+Data source priority:
+1. SQLite archive (populated by archive-to-sqlite at 1 AM)
+2. Fallback to InfluxDB if SQLite data is incomplete
+
 Usage:
     python scripts/telegram_lmp_summary.py [--date YYYY-MM-DD]
 """
 
 import os
 import sys
+import sqlite3
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from argparse import ArgumentParser
 import requests
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from dotenv import load_dotenv
 load_dotenv()
-
-from influxdb_client_3 import InfluxDBClient3
 
 
 # Configuration
@@ -30,14 +30,40 @@ SETTLEMENT_POINT = "LZ_WEST"
 PRICE_THRESHOLD = 60.0  # $60
 RTM_EXPECTED_INTERVALS = 288  # 5-min intervals × 24 hours
 DAM_EXPECTED_HOURS = 24
+RTM_MIN_THRESHOLD = 200  # Minimum RTM records to consider SQLite data "complete"
+DAM_MIN_THRESHOLD = 20   # Minimum DAM records to consider SQLite data "complete"
+
+# SQLite database path
+SQLITE_DB_PATH = Path("/Users/nancy/projects/trueflux/ercot-scraper/data/ercot_archive.db")
+
+
+def get_utc_range_for_date(date_str: str) -> tuple:
+    """
+    Convert Central Time date to UTC range.
+    Central Time midnight = 06:00 UTC
+    """
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+    start_utc = date_obj.replace(hour=6, minute=0, second=0, tzinfo=timezone.utc)
+    end_utc = start_utc + timedelta(days=1)
+    return start_utc.isoformat(), end_utc.isoformat()
 
 
 def get_influxdb_client():
     """Create InfluxDB client from environment variables"""
+    try:
+        from influxdb_client_3 import InfluxDBClient3
+    except ImportError:
+        print("Warning: influxdb_client_3 not installed, InfluxDB fallback disabled")
+        return None
+
     url = os.environ.get("INFLUXDB_URL")
     token = os.environ.get("INFLUXDB_TOKEN")
     org = os.environ.get("INFLUXDB_ORG")
     database = os.environ.get("INFLUXDB_BUCKET", "ercot")
+
+    if not all([url, token, org]):
+        print("Warning: InfluxDB credentials not configured, fallback disabled")
+        return None
 
     return InfluxDBClient3(
         host=url.replace("https://", "").replace("http://", ""),
@@ -47,47 +73,167 @@ def get_influxdb_client():
     )
 
 
-def get_utc_range_for_date(date_str: str) -> tuple:
-    """
-    Convert Central Time date to UTC range.
-    Central Time midnight = 06:00 UTC
-    """
+# ============== RTM Data Fetching (Per-bucket fallback) ==============
+
+def generate_rtm_bucket_keys(date_str: str) -> list:
+    """Generate all 288 5-minute time bucket keys for a day (in UTC, normalized format)"""
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    start_utc = f"{date_str}T06:00:00Z"
-    next_date = date_obj + timedelta(days=1)
-    end_utc = f"{next_date.strftime('%Y-%m-%d')}T06:00:00Z"
-    return start_utc, end_utc
+    start_utc = date_obj.replace(hour=6, minute=0, second=0, tzinfo=timezone.utc)
+
+    bucket_keys = []
+    for i in range(288):
+        bucket = start_utc + timedelta(minutes=5 * i)
+        bucket_keys.append(normalize_bucket_key(bucket))
+    return bucket_keys
 
 
-def fetch_rtm_data(client, date_str: str) -> list:
-    """Fetch RTM LMP data for a specific date (5-minute intervals, 288 per day)"""
+def normalize_bucket_key(dt: datetime) -> str:
+    """Normalize datetime to a consistent bucket key format (no timezone suffix)"""
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    bucket = dt.replace(second=0, microsecond=0)
+    bucket = bucket.replace(minute=(bucket.minute // 5) * 5)
+    return bucket.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def fetch_sqlite_rtm_by_table(conn: sqlite3.Connection, table: str, date_str: str) -> dict:
+    """Fetch RTM data from a specific SQLite table, return as {bucket_key: lmp}"""
     start_utc, end_utc = get_utc_range_for_date(date_str)
+    cursor = conn.cursor()
+    result = {}
+
+    try:
+        cursor.execute(f"""
+            SELECT time, lmp FROM {table}
+            WHERE settlement_point = ?
+            AND time >= ? AND time < ?
+        """, (SETTLEMENT_POINT, start_utc, end_utc))
+
+        for time_str, lmp in cursor.fetchall():
+            # Parse SQLite time (may or may not have timezone)
+            if 'Z' in time_str:
+                dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            elif '+' in time_str or time_str.endswith('-00:00'):
+                dt = datetime.fromisoformat(time_str)
+            else:
+                # No timezone - assume UTC
+                dt = datetime.fromisoformat(time_str).replace(tzinfo=timezone.utc)
+
+            bucket_key = normalize_bucket_key(dt)
+            if bucket_key not in result:
+                result[bucket_key] = lmp
+    except sqlite3.OperationalError:
+        pass
+
+    return result
+
+
+def fetch_influxdb_rtm_by_table(client, table: str, date_str: str) -> dict:
+    """Fetch RTM data from a specific InfluxDB table, return as {bucket_key: lmp}"""
+    start_utc, end_utc = get_utc_range_for_date(date_str)
+    result = {}
 
     query = f"""
     SELECT time, lmp
-    FROM "rtm_lmp"
+    FROM "{table}"
     WHERE settlement_point = '{SETTLEMENT_POINT}'
     AND time >= '{start_utc}'
     AND time < '{end_utc}'
-    ORDER BY time ASC
     """
 
     try:
-        result = client.query(query)
-        df = result.to_pandas()
-        if df.empty:
-            return []
-        # Deduplicate by rounding to 5-minute intervals (scraper may write duplicates)
-        df['time_bucket'] = df['time'].dt.floor('5min')
-        df = df.drop_duplicates(subset=['time_bucket'], keep='first')
-        return df['lmp'].tolist()
+        query_result = client.query(query)
+        df = query_result.to_pandas()
+        if not df.empty:
+            for _, row in df.iterrows():
+                dt = row['time'].to_pydatetime()
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                bucket_key = normalize_bucket_key(dt)
+                if bucket_key not in result:
+                    result[bucket_key] = row['lmp']
     except Exception as e:
-        print(f"Error fetching RTM data: {e}")
+        print(f"  Error querying InfluxDB {table}: {e}")
+
+    return result
+
+
+def fetch_rtm_data_with_fallback(conn, influx_client, date_str: str) -> tuple:
+    """
+    Fetch RTM data with per-bucket fallback priority:
+    1. SQLite rtm_lmp_cdr
+    2. SQLite rtm_lmp_api
+    3. InfluxDB rtm_lmp_realtime
+    4. InfluxDB rtm_lmp_api
+
+    Returns: (prices_list, source_stats_dict)
+    """
+    bucket_keys = generate_rtm_bucket_keys(date_str)
+
+    # Fetch all data sources
+    sources = {}
+
+    # SQLite sources
+    if conn:
+        sources['sqlite_cdr'] = fetch_sqlite_rtm_by_table(conn, 'rtm_lmp_cdr', date_str)
+        sources['sqlite_api'] = fetch_sqlite_rtm_by_table(conn, 'rtm_lmp_api', date_str)
+        print(f"  SQLite rtm_lmp_cdr: {len(sources['sqlite_cdr'])} records")
+        print(f"  SQLite rtm_lmp_api: {len(sources['sqlite_api'])} records")
+
+    # InfluxDB sources
+    if influx_client:
+        sources['influx_cdr'] = fetch_influxdb_rtm_by_table(influx_client, 'rtm_lmp_realtime', date_str)
+        sources['influx_api'] = fetch_influxdb_rtm_by_table(influx_client, 'rtm_lmp_api', date_str)
+        print(f"  InfluxDB rtm_lmp_realtime: {len(sources['influx_cdr'])} records")
+        print(f"  InfluxDB rtm_lmp_api: {len(sources['influx_api'])} records")
+
+    # Priority order for fallback
+    priority = ['sqlite_cdr', 'sqlite_api', 'influx_cdr', 'influx_api']
+
+    # Build final prices with per-bucket fallback
+    prices = []
+    source_counts = {k: 0 for k in priority}
+
+    for bucket_key in bucket_keys:
+        lmp = None
+        used_source = None
+
+        for source_name in priority:
+            if source_name in sources and bucket_key in sources[source_name]:
+                lmp = sources[source_name][bucket_key]
+                used_source = source_name
+                break
+
+        if lmp is not None:
+            prices.append(lmp)
+            source_counts[used_source] += 1
+
+    return prices, source_counts
+
+
+def fetch_dam_data_sqlite(conn: sqlite3.Connection, date_str: str) -> list:
+    """Fetch DAM LMP data for a specific date from SQLite"""
+    start_utc, end_utc = get_utc_range_for_date(date_str)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT time, lmp FROM dam_lmp
+            WHERE settlement_point = ?
+            AND time >= ? AND time < ?
+            ORDER BY time ASC
+        """, (SETTLEMENT_POINT, start_utc, end_utc))
+
+        rows = cursor.fetchall()
+        return [lmp for _, lmp in rows]
+    except sqlite3.OperationalError:
         return []
 
 
-def fetch_dam_data(client, date_str: str) -> list:
-    """Fetch DAM LMP data for a specific date"""
+# ============== DAM Data Fetching ==============
+
+def fetch_dam_data_influxdb(client, date_str: str) -> list:
+    """Fetch DAM LMP data for a specific date from InfluxDB"""
     start_utc, end_utc = get_utc_range_for_date(date_str)
 
     query = f"""
@@ -104,17 +250,14 @@ def fetch_dam_data(client, date_str: str) -> list:
         df = result.to_pandas()
         return df['lmp'].tolist() if not df.empty else []
     except Exception as e:
-        print(f"Error fetching DAM data: {e}")
+        print(f"Error fetching DAM data from InfluxDB: {e}")
         return []
 
 
-def calculate_stats(prices: list) -> dict:
-    """
-    Calculate LMP statistics.
+# ============== Main Logic ==============
 
-    Returns:
-        dict with keys: count, over_threshold, over_pct, avg_under_threshold
-    """
+def calculate_stats(prices: list) -> dict:
+    """Calculate LMP statistics."""
     count = len(prices)
 
     if not prices:
@@ -125,11 +268,9 @@ def calculate_stats(prices: list) -> dict:
             "avg_under_threshold": None,
         }
 
-    # Count prices over threshold
     over_threshold = sum(1 for p in prices if p > PRICE_THRESHOLD)
     over_pct = (over_threshold / count) * 100 if count > 0 else 0
 
-    # Calculate average of prices under or equal to threshold
     under_prices = [p for p in prices if p <= PRICE_THRESHOLD]
     avg_under = sum(under_prices) / len(under_prices) if under_prices else None
 
@@ -141,16 +282,13 @@ def calculate_stats(prices: list) -> dict:
     }
 
 
-def format_message(date_str: str, rtm_stats: dict, dam_stats: dict) -> str:
+def format_message(date_str: str, rtm_stats: dict, dam_stats: dict, source: str) -> str:
     """Format the Telegram message"""
-
-    # RTM section (5-min intervals, 288 per day = 24 hours)
     rtm_avg = f"${rtm_stats['avg_under_threshold']:.2f}" if rtm_stats['avg_under_threshold'] else "N/A"
     rtm_icon = "✅" if rtm_stats['count'] >= RTM_EXPECTED_INTERVALS else "❓"
     rtm_data_status = f"{rtm_stats['count']}/{RTM_EXPECTED_INTERVALS} {rtm_icon}"
-    rtm_over_hours = rtm_stats['over_threshold'] / 12  # 12 intervals per hour
+    rtm_over_hours = rtm_stats['over_threshold'] / 12
 
-    # DAM section (hourly, 24 per day)
     dam_avg = f"${dam_stats['avg_under_threshold']:.2f}" if dam_stats['avg_under_threshold'] else "N/A"
     dam_icon = "✅" if dam_stats['count'] >= DAM_EXPECTED_HOURS else "❓"
     dam_data_status = f"{dam_stats['count']}/{DAM_EXPECTED_HOURS} {dam_icon}"
@@ -164,7 +302,9 @@ RTM: {rtm_data_status}
 
 DAM: {dam_data_status}
   >${PRICE_THRESHOLD:.0f}: {dam_stats['over_threshold']} hours
-  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg}"""
+  Avg (<=${PRICE_THRESHOLD:.0f}): {dam_avg}
+
+[Source: {source}]"""
 
     return message
 
@@ -183,10 +323,7 @@ def send_telegram_message(message: str) -> bool:
     success = True
 
     for chat_id in chat_ids:
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-        }
+        payload = {"chat_id": chat_id, "text": message}
 
         try:
             response = requests.post(url, json=payload)
@@ -210,12 +347,7 @@ def get_yesterday() -> str:
 
 def main():
     parser = ArgumentParser(description="Send daily LMP summary to Telegram")
-    parser.add_argument(
-        "--date",
-        type=str,
-        default=None,
-        help="Date to report on (YYYY-MM-DD). Default: yesterday",
-    )
+    parser.add_argument("--date", type=str, default=None, help="Date to report on (YYYY-MM-DD)")
     args = parser.parse_args()
 
     target_date = args.date or get_yesterday()
@@ -227,28 +359,72 @@ def main():
     print(f"Settlement Point: {SETTLEMENT_POINT}")
     print()
 
-    # Connect to InfluxDB
-    print("Connecting to InfluxDB...")
-    client = get_influxdb_client()
+    # Open connections
+    conn = None
+    influx_client = None
 
-    # Fetch RTM data
-    print("Fetching RTM data...")
-    rtm_prices = fetch_rtm_data(client, target_date)
-    print(f"  Found {len(rtm_prices)} RTM records")
+    if SQLITE_DB_PATH.exists():
+        conn = sqlite3.connect(str(SQLITE_DB_PATH))
+        print(f"SQLite: {SQLITE_DB_PATH}")
+    else:
+        print(f"SQLite not found: {SQLITE_DB_PATH}")
 
-    # Fetch DAM data
+    influx_client = get_influxdb_client()
+    if influx_client:
+        print("InfluxDB: connected")
+    else:
+        print("InfluxDB: not available")
+
+    print()
+    print("Fetching RTM data (per-bucket fallback)...")
+
+    # Fetch RTM with per-bucket fallback
+    rtm_prices, rtm_source_counts = fetch_rtm_data_with_fallback(conn, influx_client, target_date)
+
+    # Determine primary source for display
+    if rtm_source_counts:
+        primary_source = max(rtm_source_counts, key=rtm_source_counts.get)
+        source_summary = ", ".join(f"{k}:{v}" for k, v in rtm_source_counts.items() if v > 0)
+        print(f"  RTM source breakdown: {source_summary}")
+    else:
+        primary_source = "N/A"
+
+    print()
     print("Fetching DAM data...")
-    dam_prices = fetch_dam_data(client, target_date)
-    print(f"  Found {len(dam_prices)} DAM records")
 
-    client.close()
+    # Fetch DAM (simpler, just SQLite then InfluxDB fallback)
+    dam_prices = []
+    dam_source = "SQLite"
+
+    if conn:
+        dam_prices = fetch_dam_data_sqlite(conn, target_date)
+        print(f"  SQLite DAM: {len(dam_prices)} records")
+
+    if len(dam_prices) < DAM_MIN_THRESHOLD and influx_client:
+        dam_prices_influx = fetch_dam_data_influxdb(influx_client, target_date)
+        print(f"  InfluxDB DAM: {len(dam_prices_influx)} records")
+        if len(dam_prices_influx) > len(dam_prices):
+            dam_prices = dam_prices_influx
+            dam_source = "InfluxDB"
+
+    # Close connections
+    if conn:
+        conn.close()
+    if influx_client:
+        influx_client.close()
+
+    # Determine overall source
+    source = "Mixed" if len(set(k for k, v in rtm_source_counts.items() if v > 0)) > 1 else primary_source
+
+    print()
+    print(f"Final data: RTM={len(rtm_prices)}, DAM={len(dam_prices)}")
 
     # Calculate statistics
     rtm_stats = calculate_stats(rtm_prices)
     dam_stats = calculate_stats(dam_prices)
 
     # Format and send message
-    message = format_message(target_date, rtm_stats, dam_stats)
+    message = format_message(target_date, rtm_stats, dam_stats, source)
     print()
     print("Message:")
     print("-" * 40)
