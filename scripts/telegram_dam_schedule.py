@@ -23,7 +23,8 @@ load_dotenv()
 
 # Configuration
 SETTLEMENT_POINT = "LZ_WEST"
-PRICE_THRESHOLD = 60.0  # $60 threshold for on/off recommendation
+MINING_REVENUE = 55.0   # $55/MWh breakeven price
+SWITCHING_COST = 40.0   # $40 per on/off cycle
 
 # SQLite database path
 SQLITE_DB_PATH = Path("/Users/nancy/projects/trueflux/ercot-scraper/data/ercot_archive.db")
@@ -140,10 +141,83 @@ def fetch_dam_prices_influxdb(client, date_str: str) -> list:
         return []
 
 
+def calculate_shutdown_schedule(prices: list) -> list:
+    """
+    Calculate optimal shutdown schedule based on:
+    - Mining revenue: $55/MWh (breakeven price)
+    - Switching cost: $40 per on/off cycle
+
+    Algorithm:
+    1. For each hour, calculate loss = max(0, price - mining_revenue)
+    2. Find contiguous shutdown periods where total savings > switching cost
+    3. Include breakeven hours (loss=0) in shutdown block if they're between
+       high-loss hours to avoid paying extra switching costs
+
+    Returns list of (hour, price, action) tuples where action is "ON" or "OFF"
+    """
+    if not prices:
+        return []
+
+    # Sort by hour
+    sorted_prices = sorted(prices, key=lambda x: x[0])
+    n = len(sorted_prices)
+
+    # Calculate loss for each hour: max(0, price - mining_revenue)
+    losses = []
+    for hour, price in sorted_prices:
+        loss = max(0, price - MINING_REVENUE)
+        losses.append((hour, price, loss))
+
+    # Initialize all hours as ON
+    actions = ["ON"] * n
+
+    # Try all possible contiguous shutdown periods [i, j]
+    # Use greedy approach: find best period starting at each position
+    i = 0
+    while i < n:
+        # Skip hours with no loss at the start (price <= mining_revenue)
+        if losses[i][2] == 0:
+            i += 1
+            continue
+
+        # Found an hour with loss > 0, find the best shutdown period starting here
+        best_end = -1
+        best_net_savings = 0
+
+        # Try all possible end points
+        current_savings = 0
+        for j in range(i, n):
+            current_savings += losses[j][2]
+            net_savings = current_savings - SWITCHING_COST
+
+            # Update best if this is better
+            if net_savings > best_net_savings:
+                best_net_savings = net_savings
+                best_end = j
+
+        # If we found a profitable period, mark those hours as OFF
+        if best_end >= 0 and best_net_savings > 0:
+            for k in range(i, best_end + 1):
+                actions[k] = "OFF"
+            i = best_end + 1
+        else:
+            i += 1
+
+    # Build result with actions
+    result = []
+    for idx, (hour, price, loss) in enumerate(losses):
+        result.append((hour, price, actions[idx]))
+
+    return result
+
+
 def format_schedule_message(date_str: str, prices: list) -> str:
     """Format the DAM schedule message"""
     if not prices:
         return f"No DAM data available for {date_str}"
+
+    # Calculate optimal shutdown schedule
+    schedule = calculate_shutdown_schedule(prices)
 
     lines = [
         f"DAM Schedule: {date_str}",
@@ -152,16 +226,15 @@ def format_schedule_message(date_str: str, prices: list) -> str:
         "Hour | Price  | Action"
     ]
 
-    for hour, price in sorted(prices, key=lambda x: x[0]):
-        action = "OFF" if price > PRICE_THRESHOLD else "ON"
+    for hour, price, action in schedule:
         hour_str = f"{hour:02d}:00"
         price_str = f"${price:6.2f}"
         lines.append(f"{hour_str} | {price_str} | {action}")
 
     # Summary
-    on_prices = [p for _, p in prices if p <= PRICE_THRESHOLD]
-    off_hours = sum(1 for _, p in prices if p > PRICE_THRESHOLD)
-    on_hours = len(on_prices)
+    on_hours = sum(1 for _, _, a in schedule if a == "ON")
+    off_hours = sum(1 for _, _, a in schedule if a == "OFF")
+    on_prices = [p for _, p, a in schedule if a == "ON"]
     avg_on_price = sum(on_prices) / len(on_prices) if on_prices else 0
 
     lines.extend([
