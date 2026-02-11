@@ -172,28 +172,38 @@ def format_schedule_message(date_str: str, prices: list) -> str:
     return "\n".join(lines)
 
 
-def send_telegram_message(message: str, chat_id: str) -> bool:
-    """Send message to a specific Telegram chat"""
+def send_telegram_message(message: str) -> bool:
+    """Send message via Telegram Bot API to all configured chat IDs"""
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_ids_str = os.environ.get("TELEGRAM_CHAT_IDS", os.environ.get("TELEGRAM_CHAT_ID", ""))
 
     if not bot_token:
         print("Error: TELEGRAM_BOT_TOKEN not set")
         return False
 
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print(f"Message sent to {chat_id}")
-            return True
-        else:
-            print(f"Error sending to {chat_id}: {response.text}")
-            return False
-    except Exception as e:
-        print(f"Error sending to {chat_id}: {e}")
+    if not chat_ids_str:
+        print("Error: TELEGRAM_CHAT_IDS not set")
         return False
+
+    chat_ids = [cid.strip() for cid in chat_ids_str.split(",") if cid.strip()]
+    print(f"Sending to {len(chat_ids)} chat(s): {chat_ids}")
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    success_count = 0
+
+    for chat_id in chat_ids:
+        payload = {"chat_id": chat_id, "text": message}
+        try:
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                print(f"  ✓ Sent to {chat_id}")
+                success_count += 1
+            else:
+                print(f"  ✗ Error sending to {chat_id}: {response.text}")
+        except Exception as e:
+            print(f"  ✗ Error sending to {chat_id}: {e}")
+
+    return success_count > 0
 
 
 def get_tomorrow() -> str:
@@ -250,10 +260,9 @@ def main():
     print("-" * 40)
     print()
 
-    # Send to test chat only
-    test_chat_id = "1972720669"
-    print(f"Sending to Telegram ({test_chat_id})...")
-    success = send_telegram_message(message, test_chat_id)
+    # Send to all configured chats
+    print("Sending to Telegram...")
+    success = send_telegram_message(message)
 
     print("=" * 60)
     print("Done!" if success else "Failed to send message")
