@@ -1,0 +1,5 @@
+requests>=2.31.0
+influxdb3-python>=0.8.0
+python-dateutil>=2.8.2
+pandas>=2.0.0
+pyarrow>=14.0.0

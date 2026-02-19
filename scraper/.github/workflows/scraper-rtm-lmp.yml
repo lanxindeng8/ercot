@@ -1,0 +1,45 @@
+name: ERCOT RTM LMP Scraper
+
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  scrape-rtm-lmp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run RTM LMP scraper
+        env:
+          ERCOT_API_USERNAME: ${{ secrets.ERCOT_API_USERNAME }}
+          ERCOT_API_PASSWORD: ${{ secrets.ERCOT_API_PASSWORD }}
+          ERCOT_PUBLIC_API_SUBSCRIPTION_KEY: ${{ secrets.ERCOT_PUBLIC_API_SUBSCRIPTION_KEY }}
+          ERCOT_ESR_API_SUBSCRIPTION_KEY: ${{ secrets.ERCOT_ESR_API_SUBSCRIPTION_KEY }}
+          INFLUXDB_URL: ${{ secrets.INFLUXDB_URL }}
+          INFLUXDB_TOKEN: ${{ secrets.INFLUXDB_TOKEN }}
+          INFLUXDB_ORG: ${{ secrets.INFLUXDB_ORG }}
+          INFLUXDB_BUCKET: ${{ secrets.INFLUXDB_BUCKET }}
+        run: |
+          cd src
+          python scraper_rtm_lmp.py
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "RTM LMP scraper failed at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "Check the logs at: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
