@@ -27,7 +27,7 @@ MINING_REVENUE = 55.0   # $55/MWh breakeven price
 SWITCHING_COST = 40.0   # $40 per on/off cycle
 
 # SQLite database path
-SQLITE_DB_PATH = Path("/Users/nancy/projects/trueflux/ercot-scraper/data/ercot_archive.db")
+SQLITE_DB_PATH = Path("/Users/bot/projects/ercot/scraper/data/ercot_archive.db")
 
 
 def get_utc_range_for_date(date_str: str) -> tuple:

@@ -21,4 +21,4 @@ echo "Running CDR scraper for real-time data..."
 cd "$PROJECT_DIR/src" && "$PYTHON" scraper_rtm_lmp_realtime.py
 
 # Log completion
-echo "$(date '+%Y-%m-%d %H:%M:%S') - RTM LMP scraper completed" >> "$PROJECT_DIR/logs/rtm_scraper.log"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - RTM LMP scraper completed" >> "$HOME/logs/trueflux/rtm-lmp-scraper.log"

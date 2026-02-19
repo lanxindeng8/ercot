@@ -34,7 +34,7 @@ RTM_MIN_THRESHOLD = 200  # Minimum RTM records to consider SQLite data "complete
 DAM_MIN_THRESHOLD = 20   # Minimum DAM records to consider SQLite data "complete"
 
 # SQLite database path
-SQLITE_DB_PATH = Path("/Users/nancy/projects/trueflux/ercot-scraper/data/ercot_archive.db")
+SQLITE_DB_PATH = Path("/Users/bot/projects/ercot/scraper/data/ercot_archive.db")
 
 
 def get_utc_range_for_date(date_str: str) -> tuple:

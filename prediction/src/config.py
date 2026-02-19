@@ -8,7 +8,7 @@ load_dotenv()
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
 MODELS_DIR = BASE_DIR / "models"
-TRUEFLUX_DIR = Path("/Users/nancy/projects/trueflux")
+TRUEFLUX_DIR = Path("/Users/bot/projects/ercot")
 
 # Model paths
 DELTA_SPREAD_MODELS = TRUEFLUX_DIR / "Delta_Spread_Prediction" / "models"

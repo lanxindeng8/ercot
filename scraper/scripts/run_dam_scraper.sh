@@ -15,4 +15,4 @@ mkdir -p "$HOME/logs/trueflux"
 cd "$PROJECT_DIR/src" && "$PYTHON" scraper_dam_lmp.py
 
 # Log completion
-echo "$(date '+%Y-%m-%d %H:%M:%S') - DAM LMP scraper completed" >> "$PROJECT_DIR/logs/dam_scraper.log"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - DAM LMP scraper completed" >> "$HOME/logs/trueflux/dam-lmp-scraper.log"
