@@ -6,25 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# Activate virtual environment if exists
-if [ -d "venv" ]; then
-    source venv/bin/activate
-elif [ -d ".venv" ]; then
-    source .venv/bin/activate
-fi
-
-# Load environment variables from .env file
-if [ -f ".env" ]; then
-    set -a
-    source .env
-    set +a
-fi
+PYTHON="${HOME}/.venvs/ercot-scraper/bin/python"
 
 # Ensure logs directory exists
-mkdir -p "$PROJECT_DIR/logs"
+mkdir -p "$HOME/logs/trueflux"
 
 # Run the scraper
-cd src && "$PROJECT_DIR/venv/bin/python" scraper_dam_lmp.py
+cd "$PROJECT_DIR/src" && "$PYTHON" scraper_dam_lmp.py
 
 # Log completion
 echo "$(date '+%Y-%m-%d %H:%M:%S') - DAM LMP scraper completed" >> "$PROJECT_DIR/logs/dam_scraper.log"
