@@ -14,5 +14,5 @@ else
 fi
 
 # Run the service
-echo "Starting TrueFlux Prediction Service on port 8001..."
-uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+echo "Starting TrueFlux Prediction Service on port 8011..."
+uvicorn src.main:app --host 0.0.0.0 --port 8011 --reload
