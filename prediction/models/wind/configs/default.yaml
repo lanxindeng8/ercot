@@ -1,0 +1,91 @@
+# Wind Generation Forecast Configuration
+# ERCOT/Texas Wind Power Forecasting System
+
+data:
+  hrrr_source: aws           # Data source: aws, google, nomads
+  hrrr_cache: true           # Cache downloaded data
+  hrrr_max_workers: 12       # Parallel download workers
+
+  # Texas bounding box
+  lat_min: 25.8
+  lat_max: 36.5
+  lon_min: -106.6
+  lon_max: -93.5
+
+  # ERCOT wind capacity (MW)
+  wind_capacity: 40000.0
+
+features:
+  # HRRR variables to fetch
+  wind_variables:
+    - u10m     # 10m U wind component
+    - v10m     # 10m V wind component
+    - u80m     # 80m U wind component (hub height)
+    - v80m     # 80m V wind component (hub height)
+    - t2m      # 2m temperature
+    - sp       # Surface pressure
+
+  # Wind turbine power curve parameters
+  cut_in_speed: 3.0          # m/s
+  rated_speed: 12.0          # m/s
+  cut_out_speed: 25.0        # m/s
+
+  # Temporal features
+  lag_hours: [1, 2, 3, 6, 12, 24]
+  rolling_windows: [6, 12, 24]
+
+model:
+  # LightGBM parameters
+  gbm_n_estimators: 1000
+  gbm_learning_rate: 0.02
+  gbm_max_depth: 8
+  gbm_num_leaves: 63
+  gbm_early_stopping_rounds: 50
+
+  # LSTM parameters
+  lstm_seq_length: 24        # Input sequence length (hours)
+  lstm_hidden_dim: 128
+  lstm_num_layers: 2
+  lstm_dropout: 0.2
+  lstm_learning_rate: 0.001
+  lstm_batch_size: 64
+  lstm_epochs: 100
+  lstm_patience: 10
+
+  # Common parameters
+  quantiles: [0.1, 0.5, 0.9]
+  random_state: 42
+
+ramp:
+  # Ramp detection thresholds (MW)
+  ramp_threshold_small: 1000.0
+  ramp_threshold_medium: 2000.0
+  ramp_threshold_large: 3000.0
+
+  # Detection parameters
+  ramp_window: 3             # Hours
+  ramp_tolerance: 2          # Hours tolerance for matching
+
+  # No-solar period (critical for ramp-down detection)
+  no_solar_start_hour: 19    # 7 PM - after sunset
+  no_solar_end_hour: 7       # 7 AM - before sunrise
+
+  # Evening peak (highest risk period)
+  evening_peak_start: 17     # 5 PM
+  evening_peak_end: 21       # 9 PM
+
+training:
+  # Data split dates (Jul-Dec 2024)
+  train_start: '2024-07-01'
+  train_end: '2024-10-31'
+  val_start: '2024-11-01'
+  val_end: '2024-11-30'
+  test_start: '2024-12-01'
+  test_end: '2024-12-31'
+
+  # Forecast horizons (hours ahead)
+  horizons: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+  # Output paths
+  output_dir: outputs
+  model_dir: models

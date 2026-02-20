@@ -1,0 +1,26 @@
+# ERCOT Wind Generation Forecast
+# Requirements
+
+# Data Sources
+# earth2studio removed - using Herbie instead (see scripts/fetch_hrrr_herbie.py)
+herbie-data>=2024.1.0
+xarray>=2024.1.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ML Frameworks
+lightgbm>=4.0.0
+torch>=2.0.0
+scikit-learn>=1.3.0
+
+# Utilities
+pyyaml>=6.0
+python-dateutil>=2.8.0
+loguru>=0.7.0
+tqdm>=4.65.0
+
+# Astronomy (for sunset/sunrise calculations)
+astral>=3.2
+
+# Optional: GPU support
+# onnxruntime-gpu>=1.16.0  # Uncomment for GPU inference
