@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data files (large)
+data/
+*.nc
+*.parquet
+*.csv
+*.h5
+*.hdf5
+
+# Trained model files (not source code)
+trained_models/
+models/
+*.pt
+*.pth
+*.pkl
+*.joblib
+
+# Outputs (keep reports and plots)
+outputs/*.json
+outputs/*.csv
+logs/
+*.log
+!outputs/PERFORMANCE_REPORT.md
+!outputs/test_performance_*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.env
+
+# Secrets
+credentials.json
+secrets.yaml
+*.pdf
