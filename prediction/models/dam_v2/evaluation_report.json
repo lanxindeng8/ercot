@@ -1,0 +1,547 @@
+{
+  "hb_west": {
+    "settlement_point": "hb_west",
+    "naive_baseline_val": {
+      "mae": 18.6642,
+      "rmse": 75.215,
+      "mape_pct": 107.17,
+      "directional_accuracy_pct": 77.78
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 1229,
+        "depth": 6,
+        "learning_rate": 0.048518830234194614,
+        "l2_leaf_reg": 6.22183274011678,
+        "subsample": 0.7927761120954183,
+        "random_strength": 0.003382371049462485,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 5.8792,
+        "rmse": 31.6089,
+        "mape_pct": 20.62,
+        "directional_accuracy_pct": 78.65
+      },
+      "test_metrics": {
+        "mae": 8.2143,
+        "rmse": 30.1765,
+        "mape_pct": 32.91,
+        "directional_accuracy_pct": 76.26
+      },
+      "tuning_seconds": 874.9
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2020,
+        "max_depth": 7,
+        "learning_rate": 0.042156987249384756,
+        "num_leaves": 255,
+        "min_child_samples": 83,
+        "reg_alpha": 2.1026239159417606,
+        "reg_lambda": 5.834658992875336,
+        "subsample": 0.7513691116125586,
+        "colsample_bytree": 0.8053202347241278,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 5.3553,
+        "rmse": 31.7447,
+        "mape_pct": 19.49,
+        "directional_accuracy_pct": 79.98
+      },
+      "test_metrics": {
+        "mae": 6.9053,
+        "rmse": 21.7525,
+        "mape_pct": 25.01,
+        "directional_accuracy_pct": 76.1
+      },
+      "tuning_seconds": 762.3
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_west_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 16642.0
+      },
+      {
+        "feature": "month",
+        "importance": 7663.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 6779.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 6538.0
+      },
+      {
+        "feature": "rtm_lag_1h",
+        "importance": 5383.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 4201.0
+      },
+      {
+        "feature": "coal_pct",
+        "importance": 4045.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 3936.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 3863.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 3853.0
+      }
+    ]
+  },
+  "hb_north": {
+    "settlement_point": "hb_north",
+    "naive_baseline_val": {
+      "mae": 14.1285,
+      "rmse": 72.521,
+      "mape_pct": 47.67,
+      "directional_accuracy_pct": 79.32
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2059,
+        "depth": 5,
+        "learning_rate": 0.028996667361967557,
+        "l2_leaf_reg": 4.989737431891099,
+        "subsample": 0.9765095618965404,
+        "random_strength": 3.687974785199574,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 5.2957,
+        "rmse": 33.0796,
+        "mape_pct": 16.14,
+        "directional_accuracy_pct": 78.63
+      },
+      "test_metrics": {
+        "mae": 7.3981,
+        "rmse": 25.437,
+        "mape_pct": 22.1,
+        "directional_accuracy_pct": 77.71
+      },
+      "tuning_seconds": 626.2
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2944,
+        "max_depth": 7,
+        "learning_rate": 0.012087057677533791,
+        "num_leaves": 189,
+        "min_child_samples": 69,
+        "reg_alpha": 9.061939786860908,
+        "reg_lambda": 9.330225280748671,
+        "subsample": 0.9525204483857377,
+        "colsample_bytree": 0.9054607459827015,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 4.5506,
+        "rmse": 29.1097,
+        "mape_pct": 13.7,
+        "directional_accuracy_pct": 79.85
+      },
+      "test_metrics": {
+        "mae": 5.5242,
+        "rmse": 20.9503,
+        "mape_pct": 17.06,
+        "directional_accuracy_pct": 77.03
+      },
+      "tuning_seconds": 1007.1
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_north_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 32922.0
+      },
+      {
+        "feature": "month",
+        "importance": 16907.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 14526.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 13078.0
+      },
+      {
+        "feature": "rtm_lag_1h",
+        "importance": 11510.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 8042.0
+      },
+      {
+        "feature": "coal_pct",
+        "importance": 7991.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 7510.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 7319.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 7222.0
+      }
+    ]
+  },
+  "hb_south": {
+    "settlement_point": "hb_south",
+    "naive_baseline_val": {
+      "mae": 13.7005,
+      "rmse": 67.9686,
+      "mape_pct": 45.53,
+      "directional_accuracy_pct": 79.66
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2775,
+        "depth": 4,
+        "learning_rate": 0.16893668889834318,
+        "l2_leaf_reg": 3.2027208865645145,
+        "subsample": 0.8159236358134199,
+        "random_strength": 1.24805142827671,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 5.2331,
+        "rmse": 36.342,
+        "mape_pct": 14.46,
+        "directional_accuracy_pct": 78.35
+      },
+      "test_metrics": {
+        "mae": 6.6532,
+        "rmse": 39.4933,
+        "mape_pct": 16.68,
+        "directional_accuracy_pct": 77.1
+      },
+      "tuning_seconds": 364.0
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 1313,
+        "max_depth": 9,
+        "learning_rate": 0.012178926968012569,
+        "num_leaves": 121,
+        "min_child_samples": 6,
+        "reg_alpha": 9.90353767701779,
+        "reg_lambda": 4.463980799407033,
+        "subsample": 0.7797538870307494,
+        "colsample_bytree": 0.9977217091214994,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 4.5453,
+        "rmse": 28.9663,
+        "mape_pct": 13.0,
+        "directional_accuracy_pct": 79.61
+      },
+      "test_metrics": {
+        "mae": 5.1364,
+        "rmse": 17.9704,
+        "mape_pct": 14.99,
+        "directional_accuracy_pct": 79.03
+      },
+      "tuning_seconds": 1051.5
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_south_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 22656.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 11877.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 10894.0
+      },
+      {
+        "feature": "month",
+        "importance": 10494.0
+      },
+      {
+        "feature": "rtm_lag_1h",
+        "importance": 9814.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 6551.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 5061.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 4966.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 4915.0
+      },
+      {
+        "feature": "coal_pct",
+        "importance": 4763.0
+      }
+    ]
+  },
+  "hb_houston": {
+    "settlement_point": "hb_houston",
+    "naive_baseline_val": {
+      "mae": 13.4504,
+      "rmse": 70.1691,
+      "mape_pct": 40.61,
+      "directional_accuracy_pct": 81.15
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 507,
+        "depth": 4,
+        "learning_rate": 0.19938307369811265,
+        "l2_leaf_reg": 3.1542441635828076,
+        "subsample": 0.7286415972569539,
+        "random_strength": 0.6109250975498,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 5.0344,
+        "rmse": 29.7707,
+        "mape_pct": 14.42,
+        "directional_accuracy_pct": 78.9
+      },
+      "test_metrics": {
+        "mae": 6.2957,
+        "rmse": 27.6021,
+        "mape_pct": 16.77,
+        "directional_accuracy_pct": 76.71
+      },
+      "tuning_seconds": 406.6
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2993,
+        "max_depth": 8,
+        "learning_rate": 0.010248406711784688,
+        "num_leaves": 153,
+        "min_child_samples": 50,
+        "reg_alpha": 5.594930334417964,
+        "reg_lambda": 8.265787091009404,
+        "subsample": 0.8364401974070368,
+        "colsample_bytree": 0.9433408024845247,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 4.3494,
+        "rmse": 28.2568,
+        "mape_pct": 12.58,
+        "directional_accuracy_pct": 80.37
+      },
+      "test_metrics": {
+        "mae": 5.2273,
+        "rmse": 19.3797,
+        "mape_pct": 14.65,
+        "directional_accuracy_pct": 77.96
+      },
+      "tuning_seconds": 1431.6
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_houston_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 31123.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 19696.0
+      },
+      {
+        "feature": "month",
+        "importance": 15709.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 15309.0
+      },
+      {
+        "feature": "rtm_lag_1h",
+        "importance": 15085.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 10464.0
+      },
+      {
+        "feature": "coal_pct",
+        "importance": 9039.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 8839.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 8607.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 8332.0
+      }
+    ]
+  },
+  "hb_busavg": {
+    "settlement_point": "hb_busavg",
+    "naive_baseline_val": {
+      "mae": 14.2324,
+      "rmse": 71.3648,
+      "mape_pct": 49.38,
+      "directional_accuracy_pct": 80.64
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2883,
+        "depth": 4,
+        "learning_rate": 0.051924251563071865,
+        "l2_leaf_reg": 4.124828277818107,
+        "subsample": 0.6199853200806869,
+        "random_strength": 0.027481945689276976,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 5.1428,
+        "rmse": 31.2368,
+        "mape_pct": 15.71,
+        "directional_accuracy_pct": 79.69
+      },
+      "test_metrics": {
+        "mae": 6.4178,
+        "rmse": 27.9533,
+        "mape_pct": 19.1,
+        "directional_accuracy_pct": 77.35
+      },
+      "tuning_seconds": 655.1
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2567,
+        "max_depth": 7,
+        "learning_rate": 0.010111370529278825,
+        "num_leaves": 241,
+        "min_child_samples": 64,
+        "reg_alpha": 7.003208078891736,
+        "reg_lambda": 7.152965091314889,
+        "subsample": 0.9483234450383224,
+        "colsample_bytree": 0.8817287497713114,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 4.6138,
+        "rmse": 29.9962,
+        "mape_pct": 13.77,
+        "directional_accuracy_pct": 81.29
+      },
+      "test_metrics": {
+        "mae": 5.4206,
+        "rmse": 20.4205,
+        "mape_pct": 16.05,
+        "directional_accuracy_pct": 78.1
+      },
+      "tuning_seconds": 935.0
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_busavg_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 27905.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 14278.0
+      },
+      {
+        "feature": "month",
+        "importance": 13559.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 12517.0
+      },
+      {
+        "feature": "rtm_lag_1h",
+        "importance": 11220.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 7598.0
+      },
+      {
+        "feature": "coal_pct",
+        "importance": 6975.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 6677.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 6498.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 6186.0
+      }
+    ]
+  }
+}

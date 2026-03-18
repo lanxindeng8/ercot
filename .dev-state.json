@@ -1,22 +1,22 @@
 {
   "version": 2,
-  "timestamp": "2026-03-17T23:26:00-05:00",
+  "timestamp": "2026-03-18T04:06:00-05:00",
   "state": "waiting_cc",
-  "task": "codex-review-training-pipeline",
-  "task_description": "Codex reviewing Sprint 1.2, then Sprint 2 starts",
+  "task": "sprint2-resume",
+  "task_description": "Session overloaded. RTM + DAM v2 CC results need to be read and committed. Codex review (warm-nudibranch) may still be running.",
   "current_step": {
-    "name": "codex-review-sprint1-task2",
-    "started_at": "2026-03-17T23:26:00-05:00",
-    "eta": null,
-    "on_complete": "Apply fixes, then start Sprint 2 Task 1 (DAM v2 retraining)"
+    "name": "resume-after-reset",
+    "started_at": "2026-03-18T04:06:00-05:00",
+    "on_complete": "1) process list to find completed tasks 2) read RTM+DAM results 3) commit 4) apply Codex fixes 5) Sprint 3"
   },
   "next_steps": [
-    "Sprint 2 Task 1: DAM v2 重训 with new pipeline",
-    "Sprint 2 Task 2: RTM 模型升级",
-    "Sprint 2 Task 3: Delta-Spread backtest"
+    "Read & commit RTM upgrade results",
+    "Read & commit DAM v2 results", 
+    "Apply Codex review fixes (warm-nudibranch)",
+    "Sprint 3: Prediction API + Viewer"
   ],
   "background_processes": [
-    {"id": "codex-review-s1t2", "host": "local", "pid": 75202, "log": "session:oceanic-coral"}
+    {"id": "codex-review-s2", "host": "local", "pid": 81191, "log": "session:warm-nudibranch"}
   ],
-  "commits_this_session": ["1946303", "77639b3", "5e3136b"]
+  "commits_this_session": ["1946303", "77639b3", "5e3136b", "5f13ceb", "06f42da", "501ec6a", "fe6f474"]
 }
