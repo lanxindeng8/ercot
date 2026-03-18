@@ -1,0 +1,39 @@
+{
+  "model_name": "ensemble_best_model",
+  "timestamp": "2026-03-18T08:24:04.510295",
+  "metrics": {
+    "standard": {
+      "mae": 14.295622576798918,
+      "rmse": 30.53176545704232,
+      "bias": 4.190343039306634,
+      "nmae": 0.03573905644199729,
+      "nrmse": 0.0763294136426058
+    },
+    "ramp": {
+      "n_actual_events": 11.0,
+      "n_predicted_events": 11.0,
+      "hits": 11.0,
+      "misses": 0.0,
+      "false_alarms": 0.0,
+      "pod": 1.0,
+      "far": 0.0,
+      "csi": 1.0,
+      "bias": 1.0,
+      "miss_rate": 0.0
+    },
+    "no_solar": {
+      "n_actual_ramp_down_no_solar": 4.0,
+      "n_predicted_ramp_down_no_solar": 4.0,
+      "n_evening_peak_events": 0.0,
+      "hits": 4.0,
+      "misses": 0.0,
+      "false_alarms": 0.0,
+      "pod_no_solar": 1.0,
+      "far_no_solar": 0.0,
+      "csi_no_solar": 1.0,
+      "miss_rate_no_solar": 0.0,
+      "avg_lead_time_hours": 0.0,
+      "avg_missed_magnitude_mw": 0.0
+    }
+  }
+}

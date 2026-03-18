@@ -277,9 +277,12 @@ class GBMWindModel(BaseWindForecastModel):
             if model_path.exists():
                 booster = lgb.Booster(model_file=str(model_path))
                 # Wrap in LGBMRegressor-like interface
+                n_features = len(model.feature_names) if model.feature_names else 0
                 lgb_model = lgb.LGBMRegressor()
                 lgb_model._Booster = booster
-                lgb_model._n_features = len(model.feature_names) if model.feature_names else 0
+                lgb_model._n_features = n_features
+                lgb_model.fitted_ = True
+                lgb_model._n_features_in = n_features
                 model.models[q] = lgb_model
 
         logger.info(f"Model loaded from {path}")

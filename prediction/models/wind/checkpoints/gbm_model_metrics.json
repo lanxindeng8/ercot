@@ -1,0 +1,45 @@
+{
+  "model_name": "gbm_model",
+  "timestamp": "2026-03-18T08:23:33.510264",
+  "metrics": {
+    "standard": {
+      "mae": 14.545585467226923,
+      "rmse": 30.27114044302657,
+      "bias": 3.902776046326548,
+      "nmae": 0.0363639636680673,
+      "nrmse": 0.07567785110756643,
+      "quantile_loss_q10": 14.536478202375534,
+      "quantile_loss_q50": 6.250108044653916,
+      "quantile_loss_q90": 3.708083338976356,
+      "coverage_80": 0.7142857142857143,
+      "sharpness_80": 159.29466693602265,
+      "winkler_80": 182.37917733180544
+    },
+    "ramp": {
+      "n_actual_events": 11.0,
+      "n_predicted_events": 11.0,
+      "hits": 11.0,
+      "misses": 0.0,
+      "false_alarms": 0.0,
+      "pod": 1.0,
+      "far": 0.0,
+      "csi": 1.0,
+      "bias": 1.0,
+      "miss_rate": 0.0
+    },
+    "no_solar": {
+      "n_actual_ramp_down_no_solar": 4.0,
+      "n_predicted_ramp_down_no_solar": 4.0,
+      "n_evening_peak_events": 0.0,
+      "hits": 4.0,
+      "misses": 0.0,
+      "false_alarms": 0.0,
+      "pod_no_solar": 1.0,
+      "far_no_solar": 0.0,
+      "csi_no_solar": 1.0,
+      "miss_rate_no_solar": 0.0,
+      "avg_lead_time_hours": 0.0,
+      "avg_missed_magnitude_mw": 0.0
+    }
+  }
+}
