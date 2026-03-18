@@ -105,7 +105,9 @@ class RTMPredictor:
             sp = settlement_point.lower()
             self.models[sp] = {}
             for horizon_key, _ in HORIZONS.items():
-                path = self.checkpoint_dir / f"{sp}_rtm_lmp_{horizon_key}_lightgbm.joblib"
+                lgbm_path = self.checkpoint_dir / f"{sp}_rtm_lmp_{horizon_key}_lightgbm.joblib"
+                cb_path = self.checkpoint_dir / f"{sp}_rtm_lmp_{horizon_key}_catboost.joblib"
+                path = lgbm_path if lgbm_path.exists() else cb_path
                 if path.exists():
                     try:
                         self.models[sp][horizon_key] = joblib.load(path)

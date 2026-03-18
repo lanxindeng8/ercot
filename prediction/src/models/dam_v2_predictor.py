@@ -88,11 +88,14 @@ class DAMV2Predictor:
 
         for settlement_point in SETTLEMENT_POINTS:
             sp = settlement_point.lower()
-            path = self.checkpoint_dir / f"{sp}_lightgbm.joblib"
+            # Try LightGBM first, then CatBoost
+            lgbm_path = self.checkpoint_dir / f"{sp}_lightgbm.joblib"
+            cb_path = self.checkpoint_dir / f"{sp}_catboost.joblib"
+            path = lgbm_path if lgbm_path.exists() else cb_path
             if path.exists():
                 try:
                     self.models[sp] = joblib.load(path)
-                    log.info("Loaded DAM V2 model for %s", sp)
+                    log.info("Loaded DAM V2 model for %s from %s", sp, path.name)
                 except Exception as e:
                     log.error("Failed to load DAM V2 model %s: %s", sp, e)
 

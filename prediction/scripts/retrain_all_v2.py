@@ -35,7 +35,10 @@ DAM_REPORT = ROOT / "models" / "dam_v2" / "evaluation_report.json"
 RTM_REPORT = ROOT / "models" / "rtm" / "training_report.json"
 SPIKE_REPORT = ROOT / "models" / "spike" / "training_report.json"
 
-SETTLEMENT_POINTS = ["hb_west", "hb_houston", "hb_north", "hb_south", "lz_lcra", "lz_west"]
+SETTLEMENT_POINTS = [
+    "hb_busavg", "hb_houston", "hb_hubavg", "hb_north", "hb_pan", "hb_south", "hb_west",
+    "lz_aen", "lz_cps", "lz_houston", "lz_lcra", "lz_north", "lz_raybn", "lz_south", "lz_west",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +151,11 @@ def main():
         dam_results = {}
         for sp in SETTLEMENT_POINTS:
             log.info("  DAM v2: %s (%d trials)", sp, args.dam_trials)
-            dam_results[sp] = dam_train_sp(sp, n_trials=args.dam_trials)
+            try:
+                dam_results[sp] = dam_train_sp(sp, n_trials=args.dam_trials)
+            except Exception as e:
+                log.error("  DAM v2 %s FAILED: %s", sp, e)
+                dam_results[sp] = {"error": str(e)}
 
         # Save evaluation report
         with open(DAM_REPORT, "w") as f:
@@ -162,10 +169,14 @@ def main():
         log.info("Step 3: Training RTM multi-horizon models …")
         from prediction.models.rtm.train import train_settlement_point as rtm_train_sp
         rtm_results = {}
-        rtm_points = ["hb_west"]  # RTM currently trained for hb_west only
+        rtm_points = SETTLEMENT_POINTS  # Train RTM for all 15 SPs
         for sp in rtm_points:
             log.info("  RTM: %s (%d trials)", sp, args.rtm_trials)
-            rtm_results[sp] = rtm_train_sp(sp, n_trials=args.rtm_trials)
+            try:
+                rtm_results[sp] = rtm_train_sp(sp, n_trials=args.rtm_trials)
+            except Exception as e:
+                log.error("  RTM %s FAILED: %s", sp, e)
+                rtm_results[sp] = {"error": str(e)}
 
         with open(RTM_REPORT, "w") as f:
             json.dump(rtm_results, f, indent=2)
@@ -178,10 +189,14 @@ def main():
         log.info("Step 4: Training Spike detection models …")
         from prediction.models.spike.train import train_settlement_point as spike_train_sp
         spike_results = {}
-        spike_points = ["hb_west"]  # Spike currently trained for hb_west only
+        spike_points = SETTLEMENT_POINTS  # Train Spike for all 15 SPs
         for sp in spike_points:
             log.info("  Spike: %s (%d trials)", sp, args.spike_trials)
-            spike_results[sp] = spike_train_sp(sp, n_trials=args.spike_trials)
+            try:
+                spike_results[sp] = spike_train_sp(sp, n_trials=args.spike_trials)
+            except Exception as e:
+                log.error("  Spike %s FAILED: %s", sp, e)
+                spike_results[sp] = {"error": str(e)}
 
         with open(SPIKE_REPORT, "w") as f:
             json.dump(spike_results, f, indent=2)
