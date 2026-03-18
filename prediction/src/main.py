@@ -860,7 +860,7 @@ def _try_sqlite_features(settlement_point: str) -> Optional[pd.DataFrame]:
         log.info("SQLite RTM data has no usable timestamps for %s, will try InfluxDB", settlement_point)
         return None
     latest_rtm_ts = pd.Timestamp(latest_rtm_ts)
-    stale_cutoff = pd.Timestamp.utcnow().tz_localize(None) - timedelta(hours=2)
+    stale_cutoff = pd.Timestamp.utcnow().tz_localize(None) - timedelta(hours=24)
     if latest_rtm_ts.tzinfo is not None:
         latest_rtm_ts = latest_rtm_ts.tz_convert("UTC").tz_localize(None)
     if latest_rtm_ts < stale_cutoff:
