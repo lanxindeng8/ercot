@@ -19,6 +19,16 @@ bess:
   # Coordinate with BESS: avoid mining during BESS discharge (high-price) hours
   coordinate: true
 
+bess_signals:
+  # Hold charge (don't discharge) when spike probability exceeds this
+  spike_hold_threshold: 0.6
+  # Revenue discount factor when RTM volatility exceeds this fraction of DAM price
+  volatility_premium: 0.15
+  # Round-trip efficiency (charge * discharge)
+  round_trip_efficiency: 0.90
+  # Degradation cost per MWh discharged ($)
+  degradation_cost_per_mwh: 2.0
+
 alerts:
   # Telegram Bot API token (reads from TELEGRAM_BOT_TOKEN env var if empty)
   bot_token: ""
