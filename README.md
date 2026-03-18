@@ -67,7 +67,7 @@ API docs: http://localhost:8011/docs
 ## Data
 
 - **11 years** of RTM/DAM prices (2015–2026), 10M+ rows
-- **5 settlement points**: HB_WEST, HB_HOUSTON, HB_NORTH, HB_SOUTH, LZ_LCRA
+- **6 settlement points**: HB_WEST, HB_HOUSTON, HB_NORTH, HB_SOUTH, LZ_LCRA, LZ_WEST
 - **Real-time pipeline**: CDR scraper every 5 minutes
 - **Storage**: SQLite (primary), InfluxDB Cloud (legacy mirror)
 

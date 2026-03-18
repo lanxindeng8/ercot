@@ -225,6 +225,6 @@ prediction/
 | 2 | LightGBM/CatBoost 而非深度学习 | 表格数据, 11年历史足够, 训练快, 可解释 |
 | 3 | 单 main.py 而非微服务 | 开发速度优先, 后续可拆 router |
 | 4 | LaunchAgent 而非 Docker | Mac mini 本地部署, 简单可靠 |
-| 5 | 5 settlement points (HB_WEST, HB_HOUSTON, HB_NORTH, HB_SOUTH, LZ_LCRA) | 覆盖主要交易节点 |
+| 5 | 6 settlement points (HB_WEST, HB_HOUSTON, HB_NORTH, HB_SOUTH, LZ_LCRA, LZ_WEST) | 覆盖主要交易节点 |
 | 6 | API key + tier 而非 OAuth | MVP 阶段简单认证足够 |
 | 7 | LP 优化器做 BESS 调度 | 确定性最优, 不需要 RL 复杂度 |
