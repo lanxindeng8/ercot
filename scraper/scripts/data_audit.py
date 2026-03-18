@@ -130,41 +130,47 @@ def detect_time_gaps_cdr(conn: sqlite3.Connection, table: str,
     cur = conn.cursor()
     placeholders = ",".join("?" for _ in FOCUS_SETTLEMENT_POINTS)
     cur.execute(
-        f'SELECT MIN(time), MAX(time) FROM "{table}" '
+        f'SELECT DATE(MIN(time)), DATE(MAX(time)) FROM "{table}" '
         f'WHERE settlement_point IN ({placeholders})',
         FOCUS_SETTLEMENT_POINTS,
     )
     row = cur.fetchone()
     if not row[0]:
         return {}
-    min_t = datetime.fromisoformat(row[0])
-    max_t = datetime.fromisoformat(row[1])
+    min_day = datetime.strptime(row[0], "%Y-%m-%d").date()
+    max_day = datetime.strptime(row[1], "%Y-%m-%d").date()
 
-    # Check gaps per day per settlement point (full interval check is too heavy)
+    counts_by_sp_day = defaultdict(dict)
     cur.execute(
         f'SELECT DATE(time) as d, settlement_point, COUNT(*) as cnt '
         f'FROM "{table}" WHERE settlement_point IN ({placeholders}) '
         f'GROUP BY d, settlement_point ORDER BY d',
         FOCUS_SETTLEMENT_POINTS,
     )
-    rows = cur.fetchall()
+    for day, sp, cnt in cur.fetchall():
+        counts_by_sp_day[sp][day] = cnt
 
-    # Expected intervals per day
     if interval_minutes == 5:
-        expected_per_day = 288  # 24*60/5
+        expected_per_day = 288
     elif interval_minutes == 60:
         expected_per_day = 24
     else:
         expected_per_day = (24 * 60) // interval_minutes
 
     gaps = {}
-    for row in rows:
-        day, sp, cnt = row[0], row[1], row[2]
-        # Allow some tolerance (95% of expected)
-        if cnt < expected_per_day * 0.80:
-            gaps.setdefault(sp, []).append(
-                {"date": day, "count": cnt, "expected": expected_per_day}
-            )
+    day = min_day
+    expected_days = []
+    while day <= max_day:
+        expected_days.append(day.isoformat())
+        day += timedelta(days=1)
+
+    for sp in FOCUS_SETTLEMENT_POINTS:
+        for expected_day in expected_days:
+            cnt = counts_by_sp_day.get(sp, {}).get(expected_day, 0)
+            if cnt < expected_per_day:
+                gaps.setdefault(sp, []).append(
+                    {"date": expected_day, "count": cnt, "expected": expected_per_day}
+                )
     return gaps
 
 

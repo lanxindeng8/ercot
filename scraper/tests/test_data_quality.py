@@ -22,18 +22,18 @@ DB_PATH = Path(__file__).parent.parent / "data" / "ercot_archive.db"
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from data_audit import (
-    get_connection,
     audit_table_overview,
     check_nulls,
     check_anomalies,
     coverage_summary,
     detect_date_gaps_hist,
+    detect_time_gaps_cdr,
 )
 from backfill_gap import (
-    ensure_hist_tables,
     backfill_rtm,
     backfill_dam,
     _utc_to_cpt_components,
+    _local_date_bounds_to_utc,
 )
 
 FOCUS_SETTLEMENT_POINTS = [
@@ -160,6 +160,31 @@ class TestUtcToCptComponents:
         r = _utc_to_cpt_components("2026-02-15T07:45:00")
         assert r["delivery_interval"] == 4
 
+    def test_spring_dst_boundary_uses_utc_5_offset(self):
+        """DST transition should use CDT offset after the spring-forward boundary."""
+        result = _utc_to_cpt_components("2026-03-08T08:00:00")
+        assert result["delivery_date"] == "2026-03-08"
+        assert result["delivery_hour"] == 3
+        assert result["delivery_interval"] == 1
+        assert result["repeated_hour"] == 0
+
+    def test_fall_dst_boundary_marks_repeated_hour(self):
+        """The second 1 AM hour on fall-back day should set repeated_hour=1."""
+        first = _utc_to_cpt_components("2026-11-01T06:00:00")
+        second = _utc_to_cpt_components("2026-11-01T07:00:00")
+        assert first["delivery_date"] == "2026-11-01"
+        assert second["delivery_date"] == "2026-11-01"
+        assert first["delivery_hour"] == 1
+        assert second["delivery_hour"] == 1
+        assert first["repeated_hour"] == 0
+        assert second["repeated_hour"] == 1
+
+    def test_local_date_bounds_respect_dst(self):
+        """UTC query bounds should expand or contract with the local DST offset."""
+        start_utc, end_utc = _local_date_bounds_to_utc("2026-03-08", "2026-03-08")
+        assert start_utc == "2026-03-08T06:00:00"
+        assert end_utc == "2026-03-09T05:00:00"
+
 
 # ---------------------------------------------------------------------------
 # In-memory backfill tests
@@ -189,6 +214,35 @@ class TestBackfillInMemory:
         cur.execute("SELECT COUNT(*) FROM rtm_lmp_hist WHERE settlement_point = 'HB_WEST'")
         assert cur.fetchone()[0] == 96
 
+    def test_rtm_backfill_prefers_api_and_fills_from_cdr(self, mem_db):
+        """API rows should override matching CDR rows without dropping CDR-only intervals."""
+        mem_db.execute("DELETE FROM rtm_lmp_cdr")
+        for minute, lmp in ((0, 10.0), (5, 10.0), (10, 10.0), (15, 20.0), (20, 20.0), (25, 20.0)):
+            timestamp = datetime(2026, 2, 15, 6, minute, 0).isoformat()
+            mem_db.execute(
+                "INSERT INTO rtm_lmp_cdr (time, settlement_point, lmp) VALUES (?, ?, ?)",
+                (timestamp, "HB_WEST", lmp),
+            )
+        for minute, lmp in ((0, 100.0), (5, 100.0), (10, 100.0)):
+            timestamp = datetime(2026, 2, 15, 6, minute, 0).isoformat()
+            mem_db.execute(
+                "INSERT INTO rtm_lmp_api (time, settlement_point, lmp) VALUES (?, ?, ?)",
+                (timestamp, "HB_WEST", lmp),
+            )
+        mem_db.commit()
+
+        count = backfill_rtm(mem_db, "2026-02-15", "2026-02-15")
+        assert count >= 2
+
+        cur = mem_db.cursor()
+        cur.execute(
+            "SELECT delivery_interval, lmp FROM rtm_lmp_hist "
+            "WHERE delivery_date = '2026-02-14' AND delivery_hour = 24 "
+            "AND settlement_point = 'HB_WEST' ORDER BY delivery_interval"
+        )
+        rows = cur.fetchall()
+        assert rows == [(1, 100.0), (2, 20.0)]
+
     def test_dam_backfill_creates_hist_records(self, mem_db):
         """DAM backfill should create hist records from dam_lmp data."""
         count = backfill_dam(mem_db, "2026-02-15", "2026-02-15")
@@ -206,7 +260,7 @@ class TestBackfillInMemory:
         assert count1 == count2
 
     def test_dam_hour_ending_format(self, mem_db):
-        """DAM hist records should have proper hour_ending format."""
+        """DAM hist records should use integer HE1-24 values."""
         backfill_dam(mem_db, "2026-02-15", "2026-02-15")
         cur = mem_db.cursor()
         cur.execute(
@@ -214,9 +268,9 @@ class TestBackfillInMemory:
             "WHERE settlement_point = 'HB_WEST' ORDER BY hour_ending"
         )
         hours = [row[0] for row in cur.fetchall()]
-        # Should have HH:00 format
+        assert all(isinstance(h, int) for h in hours)
         for h in hours:
-            assert h.endswith(":00"), f"Unexpected hour_ending format: {h}"
+            assert 1 <= h <= 24, f"Unexpected hour_ending value: {h}"
 
     def test_no_gaps_after_backfill(self, mem_db):
         """After backfill, there should be no gaps for the backfilled date."""
@@ -241,6 +295,67 @@ class TestBackfillInMemory:
             "WHERE delivery_date = '2026-02-15' AND settlement_point = 'HB_WEST'"
         )
         assert cur.fetchone()[0] == 23
+
+    def test_dam_backfill_marks_fall_repeated_hour(self, mem_db):
+        """Fallback day should produce distinct repeated-hour rows."""
+        mem_db.execute("DELETE FROM dam_lmp")
+        for hour_utc, lmp in ((6, 50.0), (7, 60.0)):
+            mem_db.execute(
+                "INSERT INTO dam_lmp (time, settlement_point, settlement_point_type, lmp) "
+                "VALUES (?, ?, ?, ?)",
+                (datetime(2026, 11, 1, hour_utc, 0, 0).isoformat(), "HB_WEST", "Hub", lmp),
+            )
+        mem_db.commit()
+
+        backfill_dam(mem_db, "2026-11-01", "2026-11-01")
+        cur = mem_db.cursor()
+        cur.execute(
+            "SELECT delivery_date, hour_ending, repeated_hour, lmp "
+            "FROM dam_lmp_hist WHERE settlement_point = 'HB_WEST' "
+            "ORDER BY delivery_date, hour_ending, repeated_hour"
+        )
+        rows = cur.fetchall()
+        assert rows == [
+            ("2026-11-01", 1, 0, 50.0),
+            ("2026-11-01", 1, 1, 60.0),
+        ]
+
+
+class TestAuditGapDetection:
+    """Gap detection should catch fully missing days, not just low-count days."""
+
+    def test_detect_date_gaps_hist_finds_missing_day(self, mem_db):
+        mem_db.execute(
+            "CREATE TABLE sample_hist (delivery_date TEXT NOT NULL, settlement_point TEXT NOT NULL)"
+        )
+        mem_db.executemany(
+            "INSERT INTO sample_hist (delivery_date, settlement_point) VALUES (?, ?)",
+            [
+                ("2026-02-15", "HB_WEST"),
+                ("2026-02-17", "HB_WEST"),
+            ],
+        )
+        mem_db.commit()
+
+        gaps = detect_date_gaps_hist(mem_db, "sample_hist", "delivery_date", "settlement_point")
+        assert gaps["HB_WEST"] == ["2026-02-16"]
+
+    def test_detect_time_gaps_cdr_finds_completely_missing_day(self, mem_db):
+        mem_db.execute("DELETE FROM rtm_lmp_cdr")
+        base = datetime(2026, 2, 15, 0, 0, 0)
+        for offset_days in (0, 2):
+            for i in range(288):
+                t = base + timedelta(days=offset_days, minutes=5 * i)
+                mem_db.execute(
+                    "INSERT INTO rtm_lmp_cdr (time, settlement_point, lmp) VALUES (?, ?, ?)",
+                    (t.isoformat(), "HB_WEST", 20.0),
+                )
+        mem_db.commit()
+
+        gaps = detect_time_gaps_cdr(mem_db, "rtm_lmp_cdr")
+        assert gaps["HB_WEST"] == [
+            {"date": "2026-02-16", "count": 0, "expected": 288},
+        ]
 
 
 # ---------------------------------------------------------------------------
