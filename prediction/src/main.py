@@ -342,7 +342,7 @@ async def predict_dam_next_day(
     """
     Next-day DAM price predictions (24 hours).
 
-    Uses LightGBM models trained per settlement point with 41 features.
+    Uses LightGBM models trained per settlement point with 80 features.
     Fetches recent DAM + RTM data from InfluxDB, computes features, and predicts.
 
     **Available settlement points**: hb_west, hb_north, hb_south, hb_houston, hb_busavg
@@ -906,10 +906,18 @@ def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
 def _try_sqlite_features(settlement_point: str) -> Optional[pd.DataFrame]:
     """Attempt to load features from SQLite. Returns None on failure."""
     from .data.sqlite_fetcher import create_sqlite_fetcher
+    from .data.training_pipeline import (
+        load_ancillary_hourly,
+        load_fuel_gen_hourly,
+        load_fuel_mix_hourly,
+        load_rtm_components_hourly,
+    )
 
     fetcher = None
+    db_path = None
     try:
         fetcher = create_sqlite_fetcher()
+        db_path = fetcher.db_path
         start = datetime.utcnow() - timedelta(days=30)
         dam_raw = fetcher.fetch_dam_prices(settlement_point=settlement_point, start_date=start)
         rtm_raw = fetcher.fetch_rtm_prices(settlement_point=settlement_point, start_date=start)
@@ -937,7 +945,30 @@ def _try_sqlite_features(settlement_point: str) -> Optional[pd.DataFrame]:
         return None
 
     dam_hourly, rtm_hourly = _raw_to_hourly(dam_raw, rtm_raw)
-    features_df = compute_features(dam_hourly, rtm_hourly)
+
+    # Load additional data sources for 80-feature pipeline
+    if db_path is None:
+        from .data.training_pipeline import DEFAULT_DB
+        db_path = DEFAULT_DB
+    start_str = start.strftime("%Y-%m-%d")
+    ancillary_hourly = None
+    fuel_hourly = None
+    rtm_comp = None
+    fuel_gen_hourly = None
+    try:
+        ancillary_hourly = load_ancillary_hourly(db_path, date_from=start_str)
+        fuel_hourly = load_fuel_mix_hourly(db_path, date_from=start_str)
+        rtm_comp = load_rtm_components_hourly(db_path, settlement_point, date_from=start_str)
+        fuel_gen_hourly = load_fuel_gen_hourly(db_path, date_from=start_str)
+    except Exception as e:
+        log.warning("Failed to load ancillary/fuel/rtm-component data: %s", e)
+
+    features_df = compute_features(
+        dam_hourly, rtm_hourly, fuel_hourly,
+        ancillary_hourly=ancillary_hourly,
+        rtm_components_hourly=rtm_comp if rtm_comp is not None and not rtm_comp.empty else None,
+        fuel_gen_hourly=fuel_gen_hourly,
+    )
 
     if features_df.empty:
         log.info("SQLite feature computation returned no rows for %s", settlement_point)

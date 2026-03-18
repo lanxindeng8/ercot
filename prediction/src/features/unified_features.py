@@ -5,7 +5,7 @@ Computes temporal, price-lag, rolling-stat, cross-market, fuel-mix,
 ancillary-service, RTM congestion/loss, and expanded fuel generation
 features from hourly data aligned by (delivery_date, hour_ending).
 
-Feature count: 80 (up from 42 in v1).
+Feature count: 80 (up from 40 in v1).
 """
 
 import numpy as np
@@ -19,6 +19,7 @@ from typing import Optional
 
 PEAK_HOURS = set(range(7, 23))  # HE7–HE22
 SUMMER_MONTHS = {6, 7, 8, 9}
+ERCOT_TZ = "America/Chicago"
 
 US_MAJOR_HOLIDAYS = {
     (1, 1), (7, 4), (11, 11), (12, 25), (12, 31),
@@ -63,7 +64,7 @@ FUEL_GROUPS_EXPANDED = {
 # Feature column registry
 # ---------------------------------------------------------------------------
 
-# Original 42 features (v1) ------------------------------------------------
+# Original 40 features (v1) ------------------------------------------------
 
 _TEMPORAL_FEATURES = [
     "hour_of_day", "day_of_week", "month",
@@ -88,7 +89,7 @@ _FUEL_PCT_FEATURES = [
 
 # New features (v2) ---------------------------------------------------------
 
-# Ancillary service prices from dam_asmcpc_hist (12 features)
+# Ancillary service prices from dam_asmcpc_hist (13 features)
 _AS_PRICE_FEATURES = [
     "regdn", "regup", "rrs", "nspin", "ecrs",
 ]
@@ -114,7 +115,7 @@ RTM_COMPONENT_FEATURES = [
     "high_congestion_flag",     # binary: |congestion_pct| > 20%
 ]
 
-# Expanded fuel generation MW + derived (14 features)
+# Expanded fuel generation MW + derived (15 features)
 _FUEL_GEN_MW_FEATURES = [
     "gas_gen_mw", "gas_cc_gen_mw", "coal_gen_mw", "nuclear_gen_mw",
     "solar_gen_mw", "wind_gen_mw", "hydro_gen_mw", "biomass_gen_mw",
@@ -134,7 +135,7 @@ FUEL_GEN_FEATURES = _FUEL_GEN_MW_FEATURES + _FUEL_DERIVED_FEATURES + _FUEL_RAMP_
 # Composite feature lists
 # ---------------------------------------------------------------------------
 
-# Original v1 features (42) — kept for backward compatibility checks.
+# Original v1 features (40) — kept for backward compatibility checks.
 FEATURE_COLUMNS_V1 = (
     _TEMPORAL_FEATURES
     + _DAM_LAG_FEATURES + _RTM_LAG_FEATURES
@@ -146,15 +147,15 @@ FEATURE_COLUMNS_V1 = (
 # Full v2 feature set (80).
 FEATURE_COLUMNS = (
     FEATURE_COLUMNS_V1
-    + AS_FEATURES           # +12
+    + AS_FEATURES           # +13
     + RTM_COMPONENT_FEATURES  # +6
-    + FUEL_GEN_FEATURES     # +14
+    + FUEL_GEN_FEATURES     # +15
 )
-# => 42 + 12 + 6 + 14 = 74 ... need 6 more to hit 80
+# => 40 + 13 + 6 + 15 = 74 ... need 6 more to hit 80
 
 # Additional cross-domain features (6 more to reach 80)
 CROSS_FEATURES = [
-    "dam_as_ratio",             # dam_lmp / (total_as_cost + 1)
+    "dam_as_ratio",             # dam_lag_1h / (total_as_cost + 1)
     "reg_spread_roll_24h_mean", # 24h rolling mean of reg_spread
     "ecrs_lag_24h",             # ECRS lagged 24h
     "gas_cc_share",             # gas_cc_gen_mw / total_gen_mw
@@ -245,24 +246,32 @@ def compute_features(
     if merged.empty:
         return pd.DataFrame(columns=["delivery_date", "hour_ending"] + FEATURE_COLUMNS + TARGET_COLUMNS)
 
-    # Build a proper datetime for sorting / rolling.
-    merged["dt"] = pd.to_datetime(merged["delivery_date"]) + pd.to_timedelta(
-        merged["hour_ending"] - 1, unit="h"
-    )
+    # Build a DST-safe market-hour index and only reindex over valid ERCOT
+    # delivery hours. This preserves real data gaps without fabricating the
+    # spring-forward hour or the repeated fall-back hour we intentionally drop.
+    merged["dt"] = _market_hour_start_index(merged["delivery_date"], merged["hour_ending"])
+    merged = merged.dropna(subset=["dt"])
     merged = merged.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-    merged = merged.set_index("dt").sort_index()
-    merged = merged.reindex(pd.date_range(merged.index.min(), merged.index.max(), freq="h"))
-    merged.index.name = "dt"
-    merged["delivery_date"] = merged.index.strftime("%Y-%m-%d")
-    merged["hour_ending"] = merged.index.hour + 1
+    market_hours = _market_hour_frame(
+        merged["delivery_date"].min(),
+        merged["delivery_date"].max(),
+    )
+    merged = (
+        merged.set_index("dt")
+        .reindex(market_hours.index)
+        .rename_axis("dt")
+    )
+    merged["delivery_date"] = market_hours["delivery_date"].to_numpy()
+    merged["hour_ending"] = market_hours["hour_ending"].to_numpy()
 
     # ---- temporal features ----
     merged["hour_of_day"] = merged["hour_ending"]
-    merged["day_of_week"] = merged.index.dayofweek
-    merged["month"] = merged.index.month
+    delivery_dates = pd.to_datetime(merged["delivery_date"])
+    merged["day_of_week"] = delivery_dates.dt.dayofweek
+    merged["month"] = delivery_dates.dt.month
     merged["is_weekend"] = (merged["day_of_week"] >= 5).astype(int)
     merged["is_peak_hour"] = merged["hour_ending"].isin(PEAK_HOURS).astype(int)
-    merged["is_holiday"] = pd.Series(merged.index, index=merged.index).apply(is_us_holiday)
+    merged["is_holiday"] = delivery_dates.apply(is_us_holiday)
     merged["is_summer"] = merged["month"].isin(SUMMER_MONTHS).astype(int)
 
     # ---- price lags ----
@@ -282,10 +291,9 @@ def compute_features(
             merged[f"{prefix}_roll_{win}h_max"] = r.max()
 
     # ---- cross-market spread ----
-    merged["dam_rtm_spread"] = merged["dam_lmp"] - merged["rtm_lmp"]
-    spread_shifted = merged["dam_rtm_spread"].shift(1)
-    merged["spread_roll_24h_mean"] = spread_shifted.rolling(24, min_periods=24).mean()
-    merged["spread_roll_168h_mean"] = spread_shifted.rolling(168, min_periods=168).mean()
+    merged["dam_rtm_spread"] = (merged["dam_lmp"] - merged["rtm_lmp"]).shift(1)
+    merged["spread_roll_24h_mean"] = merged["dam_rtm_spread"].rolling(24, min_periods=24).mean()
+    merged["spread_roll_168h_mean"] = merged["dam_rtm_spread"].rolling(168, min_periods=168).mean()
 
     # ---- fuel mix percentages (original v1) ----
     if fuel_hourly is not None and not fuel_hourly.empty:
@@ -334,6 +342,39 @@ def compute_features(
     return out
 
 
+def _market_hour_start_index(
+    delivery_date: pd.Series,
+    hour_ending: pd.Series,
+) -> pd.Series:
+    """Convert ERCOT delivery-date/hour-ending pairs into DST-safe interval starts."""
+    delivery_date = pd.to_datetime(delivery_date, format="%Y-%m-%d")
+    end_naive = delivery_date + pd.to_timedelta(hour_ending.astype("int64") % 24, unit="h")
+    end_local = end_naive.dt.tz_localize(ERCOT_TZ, ambiguous=True, nonexistent="NaT")
+    return end_local - pd.Timedelta(hours=1)
+
+
+def _market_hour_frame(start_date: str, end_date: str) -> pd.DataFrame:
+    """Generate the valid ERCOT market-hour sequence between two delivery dates."""
+    records: list[dict[str, object]] = []
+    for delivery_date in pd.date_range(start_date, end_date, freq="D"):
+        delivery_date_str = delivery_date.strftime("%Y-%m-%d")
+        for hour_ending in range(1, 25):
+            dt = _market_hour_start_index(
+                pd.Series([delivery_date_str]),
+                pd.Series([hour_ending], dtype="int64"),
+            ).iloc[0]
+            if pd.isna(dt):
+                continue
+            records.append(
+                {
+                    "dt": dt,
+                    "delivery_date": delivery_date_str,
+                    "hour_ending": hour_ending,
+                }
+            )
+    return pd.DataFrame.from_records(records).set_index("dt")
+
+
 # ---------------------------------------------------------------------------
 # Ancillary service helpers
 # ---------------------------------------------------------------------------
@@ -341,6 +382,7 @@ def compute_features(
 
 def _merge_ancillary(merged: pd.DataFrame, ancillary_hourly: Optional[pd.DataFrame]) -> None:
     """Merge ancillary service features in-place."""
+    raw_as: dict[str, pd.Series] = {}
     if ancillary_hourly is not None and not ancillary_hourly.empty:
         as_cols = ["delivery_date", "hour_ending", "regdn", "regup", "rrs", "nspin", "ecrs"]
         as_df = ancillary_hourly[[c for c in as_cols if c in ancillary_hourly.columns]].copy()
@@ -351,12 +393,12 @@ def _merge_ancillary(merged: pd.DataFrame, ancillary_hourly: Optional[pd.DataFra
             if col in as_df.columns:
                 mapping = as_df.set_index(["delivery_date", "hour_ending"])[col]
                 idx = pd.MultiIndex.from_arrays([merged["delivery_date"], merged["hour_ending"]])
-                merged[col] = idx.map(mapping).values
+                raw_as[col] = pd.Series(idx.map(mapping).values, index=merged.index)
 
     # Ensure all raw AS columns exist
     for col in _AS_PRICE_FEATURES:
-        if col not in merged.columns:
-            merged[col] = np.nan
+        raw_series = raw_as.get(col, pd.Series(np.nan, index=merged.index))
+        merged[col] = raw_series.shift(1)
 
     # Derived features
     merged["reg_spread"] = merged["regup"] - merged["regdn"]
@@ -366,20 +408,22 @@ def _merge_ancillary(merged: pd.DataFrame, ancillary_hourly: Optional[pd.DataFra
     )
 
     # Lags (24h)
-    merged["regup_lag_24h"] = merged["regup"].shift(24)
-    merged["rrs_lag_24h"] = merged["rrs"].shift(24)
-    merged["nspin_lag_24h"] = merged["nspin"].shift(24)
-    merged["total_as_lag_24h"] = merged["total_as_cost"].shift(24)
-    merged["ecrs_lag_24h"] = merged["ecrs"].shift(24)
+    merged["regup_lag_24h"] = raw_as.get("regup", pd.Series(np.nan, index=merged.index)).shift(24)
+    merged["rrs_lag_24h"] = raw_as.get("rrs", pd.Series(np.nan, index=merged.index)).shift(24)
+    merged["nspin_lag_24h"] = raw_as.get("nspin", pd.Series(np.nan, index=merged.index)).shift(24)
+    raw_total_as = sum(
+        raw_as.get(col, pd.Series(np.nan, index=merged.index))
+        for col in _AS_PRICE_FEATURES
+    )
+    merged["total_as_lag_24h"] = raw_total_as.shift(24)
+    merged["ecrs_lag_24h"] = raw_as.get("ecrs", pd.Series(np.nan, index=merged.index)).shift(24)
 
     # Rolling stats on total AS cost
-    as_shifted = merged["total_as_cost"].shift(1)
-    merged["total_as_roll_24h_mean"] = as_shifted.rolling(24, min_periods=24).mean()
-    merged["total_as_roll_24h_std"] = as_shifted.rolling(24, min_periods=24).std()
+    merged["total_as_roll_24h_mean"] = merged["total_as_cost"].rolling(24, min_periods=24).mean()
+    merged["total_as_roll_24h_std"] = merged["total_as_cost"].rolling(24, min_periods=24).std()
 
     # Rolling on reg spread
-    reg_shifted = merged["reg_spread"].shift(1)
-    merged["reg_spread_roll_24h_mean"] = reg_shifted.rolling(24, min_periods=24).mean()
+    merged["reg_spread_roll_24h_mean"] = merged["reg_spread"].rolling(24, min_periods=24).mean()
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +435,7 @@ def _merge_rtm_components(
     merged: pd.DataFrame, rtm_components_hourly: Optional[pd.DataFrame]
 ) -> None:
     """Merge RTM congestion/loss component features in-place."""
+    raw_component_cols: dict[str, pd.Series] = {}
     if rtm_components_hourly is not None and not rtm_components_hourly.empty:
         rc = rtm_components_hourly.copy()
         rc = rc.drop_duplicates(subset=["delivery_date", "hour_ending"], keep="last")
@@ -409,12 +454,15 @@ def _merge_rtm_components(
 
         for col in ["congestion_pct", "loss_pct", "energy_pct", "congestion_component"]:
             if col in key_idx.columns:
-                merged[col] = merged_idx.map(key_idx[col]).values
+                raw_component_cols[col] = pd.Series(merged_idx.map(key_idx[col]).values, index=merged.index)
 
     # Ensure columns exist
     for col in ["congestion_pct", "loss_pct", "energy_pct", "congestion_component"]:
-        if col not in merged.columns:
-            merged[col] = np.nan
+        raw_series = raw_component_cols.get(col, pd.Series(np.nan, index=merged.index))
+        if col == "congestion_component":
+            merged[col] = raw_series
+        else:
+            merged[col] = raw_series.shift(1)
 
     # Derived congestion features
     cong = merged["congestion_component"]
@@ -437,6 +485,7 @@ def _merge_rtm_components(
 def _merge_fuel_gen(merged: pd.DataFrame, fuel_gen_hourly: Optional[pd.DataFrame]) -> None:
     """Merge expanded fuel generation MW features in-place."""
     gen_cols = [c for c in _FUEL_GEN_MW_FEATURES + ["total_gen_mw"] if True]
+    raw_gen: dict[str, pd.Series] = {}
 
     if fuel_gen_hourly is not None and not fuel_gen_hourly.empty:
         fg = fuel_gen_hourly.drop_duplicates(
@@ -447,15 +496,16 @@ def _merge_fuel_gen(merged: pd.DataFrame, fuel_gen_hourly: Optional[pd.DataFrame
 
         for col in gen_cols:
             if col in fg_idx.columns:
-                merged[col] = merged_idx.map(fg_idx[col]).values
+                raw_gen[col] = pd.Series(merged_idx.map(fg_idx[col]).values, index=merged.index)
 
     # Ensure all MW columns exist
     for col in _FUEL_GEN_MW_FEATURES:
-        if col not in merged.columns:
-            merged[col] = np.nan
+        merged[col] = raw_gen.get(col, pd.Series(np.nan, index=merged.index)).shift(1)
 
     # Total generation
-    if "total_gen_mw" not in merged.columns:
+    if "total_gen_mw" in raw_gen:
+        merged["total_gen_mw"] = raw_gen["total_gen_mw"].shift(1)
+    else:
         merged["total_gen_mw"] = (
             merged["gas_gen_mw"] + merged["gas_cc_gen_mw"] + merged["coal_gen_mw"]
             + merged["nuclear_gen_mw"] + merged["solar_gen_mw"]
@@ -493,7 +543,7 @@ def _merge_fuel_gen(merged: pd.DataFrame, fuel_gen_hourly: Optional[pd.DataFrame
 def _build_cross_features(merged: pd.DataFrame) -> None:
     """Build cross-domain features in-place."""
     # DAM-to-AS ratio: how does the energy price relate to ancillary costs?
-    merged["dam_as_ratio"] = merged["dam_lmp"] / (merged["total_as_cost"].abs() + 1)
+    merged["dam_as_ratio"] = merged["dam_lag_1h"] / (merged["total_as_cost"].abs() + 1)
 
 
 # ---------------------------------------------------------------------------

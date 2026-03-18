@@ -19,6 +19,7 @@ import pytest
 from prediction.src.features.unified_features import (
     FEATURE_COLUMNS,
     TARGET_COLUMNS,
+    _NULLABLE_FEATURE_SET,
     aggregate_fuel_mix_hourly,
     compute_features,
     is_us_holiday,
@@ -46,6 +47,7 @@ load_dam_hourly = _tp.load_dam_hourly
 load_rtm_hourly = _tp.load_rtm_hourly
 load_fuel_mix = _tp.load_fuel_mix
 load_fuel_mix_hourly = _tp.load_fuel_mix_hourly
+load_rtm_components_hourly = _tp.load_rtm_components_hourly
 split_by_date = _tp.split_by_date
 run_pipeline = _tp.run_pipeline
 
@@ -196,6 +198,33 @@ class TestDataLoading:
             atol=1e-5,
         )
 
+    def test_load_rtm_components_hourly_normalizes_utc_to_ercot(self, tmp_path):
+        db_path = tmp_path / "rtm_components.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE rtm_lmp_api ("
+            "  time TEXT NOT NULL,"
+            "  settlement_point TEXT NOT NULL,"
+            "  lmp REAL,"
+            "  energy_component REAL,"
+            "  congestion_component REAL,"
+            "  loss_component REAL"
+            ")"
+        )
+        conn.executemany(
+            "INSERT INTO rtm_lmp_api VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("2024-03-10T07:05:00", "HB_WEST", 110.0, 75.0, 25.0, 10.0),
+                ("2024-03-10T08:05:00", "HB_WEST", 120.0, 80.0, 30.0, 10.0),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        df = load_rtm_components_hourly(db_path, "HB_WEST")
+        actual = list(df[["delivery_date", "hour_ending"]].itertuples(index=False, name=None))
+        assert actual == [("2024-03-10", 1), ("2024-03-10", 3)]
+
 
 # ---------------------------------------------------------------------------
 # Feature computation tests
@@ -215,8 +244,8 @@ class TestFeatureComputation:
         dam = load_dam_hourly(test_db, "HB_WEST")
         rtm = load_rtm_hourly(test_db, "HB_WEST")
         features = compute_features(dam, rtm)
-        non_fuel = [c for c in FEATURE_COLUMNS if not c.endswith("_pct")]
-        assert features[non_fuel].isna().sum().sum() == 0
+        required = [c for c in FEATURE_COLUMNS if c not in _NULLABLE_FEATURE_SET]
+        assert features[required].isna().sum().sum() == 0
 
     def test_fuel_features_populated(self, test_db):
         dam = load_dam_hourly(test_db, "HB_WEST")
@@ -242,8 +271,92 @@ class TestFeatureComputation:
         dam = load_dam_hourly(test_db, "HB_WEST")
         rtm = load_rtm_hourly(test_db, "HB_WEST")
         features = compute_features(dam, rtm)
-        expected = features["dam_lmp"] - features["rtm_lmp"]
+        expected = features["dam_lag_1h"] - features["rtm_lag_1h"]
         np.testing.assert_allclose(features["dam_rtm_spread"], expected)
+
+    def test_auxiliary_features_use_previous_hour_data(self):
+        dt_index = pd.date_range("2024-01-01 00:00:00", periods=240, freq="h")
+        values = np.arange(len(dt_index), dtype=np.float32)
+
+        dam = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": (dt_index.hour + 1).astype("int16"),
+                "lmp": values + 10.0,
+            }
+        )
+        rtm = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": (dt_index.hour + 1).astype("int16"),
+                "lmp": values + 100.0,
+            }
+        )
+        ancillary = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": (dt_index.hour + 1).astype("int16"),
+                "regdn": values + 1.0,
+                "regup": values + 2.0,
+                "rrs": values + 3.0,
+                "nspin": values + 4.0,
+                "ecrs": values + 5.0,
+            }
+        )
+        rtm_components = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": (dt_index.hour + 1).astype("int16"),
+                "lmp": values + 200.0,
+                "energy_component": values + 20.0,
+                "congestion_component": values + 30.0,
+                "loss_component": values + 40.0,
+            }
+        )
+        fuel_gen = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": (dt_index.hour + 1).astype("int16"),
+                "gas_gen_mw": values + 1000.0,
+                "gas_cc_gen_mw": values + 2000.0,
+                "coal_gen_mw": values + 3000.0,
+                "nuclear_gen_mw": values + 4000.0,
+                "solar_gen_mw": values + 5000.0,
+                "wind_gen_mw": values + 6000.0,
+                "hydro_gen_mw": values + 7000.0,
+                "biomass_gen_mw": values + 8000.0,
+                "total_gen_mw": values + 36000.0,
+            }
+        )
+
+        features = compute_features(
+            dam,
+            rtm,
+            ancillary_hourly=ancillary,
+            rtm_components_hourly=rtm_components,
+            fuel_gen_hourly=fuel_gen,
+        )
+
+        feature_dt = pd.to_datetime(features["delivery_date"]) + pd.to_timedelta(features["hour_ending"] - 1, unit="h")
+        expected_regdn = pd.Series(values + 1.0, index=dt_index).shift(1)
+        expected_congestion = pd.Series(((values + 30.0) / (values + 200.0)) * 100.0, index=dt_index).shift(1)
+        expected_gas = pd.Series(values + 1000.0, index=dt_index).shift(1)
+        np.testing.assert_allclose(
+            features["regdn"],
+            expected_regdn.loc[feature_dt].to_numpy(),
+        )
+        np.testing.assert_allclose(
+            features["dam_as_ratio"],
+            features["dam_lag_1h"] / (features["total_as_cost"].abs() + 1),
+        )
+        np.testing.assert_allclose(
+            features["congestion_pct"],
+            expected_congestion.loc[feature_dt].to_numpy(),
+        )
+        np.testing.assert_allclose(
+            features["gas_gen_mw"],
+            expected_gas.loc[feature_dt].to_numpy(),
+        )
 
     def test_lag_features_correctly_shifted(self, test_db):
         dam = load_dam_hourly(test_db, "HB_WEST")
@@ -309,6 +422,32 @@ class TestFeatureComputation:
         features = compute_features(dam, rtm, fuel_hourly)
         dupes = features.duplicated(subset=["delivery_date", "hour_ending"])
         assert not dupes.any()
+
+    def test_compute_features_does_not_fabricate_spring_forward_hour(self):
+        rows = []
+        for day in pd.date_range("2024-03-01", "2024-03-20", freq="D"):
+            for hour_ending in range(1, 25):
+                if day.strftime("%Y-%m-%d") == "2024-03-10" and hour_ending == 2:
+                    continue
+                rows.append(
+                    {
+                        "delivery_date": day.strftime("%Y-%m-%d"),
+                        "hour_ending": hour_ending,
+                    }
+                )
+
+        base = pd.DataFrame(rows)
+        base["lmp"] = np.arange(len(base), dtype=np.float32)
+        dam = base.copy()
+        rtm = base.copy()
+        rtm["lmp"] = rtm["lmp"] + 50.0
+
+        features = compute_features(dam, rtm)
+        mask = (
+            (features["delivery_date"] == "2024-03-10")
+            & (features["hour_ending"] == 2)
+        )
+        assert not mask.any()
 
 
 # ---------------------------------------------------------------------------

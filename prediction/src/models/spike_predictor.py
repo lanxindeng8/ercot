@@ -17,22 +17,11 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
 
+from prediction.src.features.unified_features import FEATURE_COLUMNS
+
 log = logging.getLogger(__name__)
 
-FUEL_COLS = ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]
-
-BASE_FEATURES = [
-    "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
-    "is_holiday", "is_summer",
-    "dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h",
-    "rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h",
-    "dam_roll_24h_mean", "dam_roll_24h_std", "dam_roll_24h_min", "dam_roll_24h_max",
-    "dam_roll_168h_mean", "dam_roll_168h_std", "dam_roll_168h_min", "dam_roll_168h_max",
-    "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
-    "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
-    "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
-    *FUEL_COLS,
-]
+BASE_FEATURES = list(FEATURE_COLUMNS)
 
 SPIKE_FEATURES = [
     "price_accel",
@@ -171,8 +160,8 @@ class SpikePredictor:
                 df = self.add_spike_features(df, sp)
                 break
 
-        # Fill missing fuel cols
-        for col in FUEL_COLS:
+        # Fill nullable columns (fuel, ancillary, congestion, generation, cross-domain)
+        for col in BASE_FEATURES:
             if col in df.columns:
                 df[col] = df[col].fillna(0)
 

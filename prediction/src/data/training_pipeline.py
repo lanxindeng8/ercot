@@ -14,8 +14,10 @@ Usage
 
 import argparse
 import sqlite3
+from datetime import timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -35,12 +37,13 @@ from prediction.src.features.unified_features import (
 
 DEFAULT_DB = Path(__file__).resolve().parents[3] / "scraper" / "data" / "ercot_archive.db"
 
-SETTLEMENT_POINTS = ["HB_WEST", "HB_NORTH", "HB_SOUTH", "HB_HOUSTON", "HB_BUSAVG"]
+SETTLEMENT_POINTS = ["HB_WEST", "HB_HOUSTON", "HB_NORTH", "HB_SOUTH", "LZ_LCRA", "LZ_WEST"]
 
 # Date-based split boundaries (exclusive upper bound)
 TRAIN_END = "2024-01-01"  # train: < 2024
 VAL_END = "2025-01-01"    # val:   2024
                            # test:  >= 2025
+ERCOT_TZ = ZoneInfo("America/Chicago")
 
 # Temporal features are int8; everything else is float32.
 _TEMPORAL_INT8 = {
@@ -83,6 +86,41 @@ def _coerce_training_schema(df: pd.DataFrame) -> pd.DataFrame:
         if col in out.columns:
             out[col] = out[col].astype("float32")
     return out
+
+
+def _utc_to_ercot_hourly_components(timestamp_series: pd.Series) -> pd.DataFrame:
+    """Convert UTC timestamps to ERCOT delivery_date/hour_ending with DST handling."""
+    utc = pd.to_datetime(timestamp_series, utc=True)
+    local = utc.dt.tz_convert(ERCOT_TZ)
+
+    delivery_date = local.dt.strftime("%Y-%m-%d")
+    hour_ending = local.dt.hour.astype("int16")
+
+    midnight_mask = hour_ending == 0
+    if midnight_mask.any():
+        delivery_date = delivery_date.mask(
+            midnight_mask,
+            (local - pd.Timedelta(days=1)).dt.strftime("%Y-%m-%d"),
+        )
+        hour_ending = hour_ending.mask(midnight_mask, 24)
+
+    repeated_hour = local.map(lambda ts: int(ts.fold)).astype("int8")
+    return pd.DataFrame(
+        {
+            "delivery_date": delivery_date.astype("string"),
+            "hour_ending": hour_ending.astype("int8"),
+            "repeated_hour": repeated_hour,
+        }
+    )
+
+
+def _table_exists(db_path: Path, table_name: str) -> bool:
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+    return row is not None
 
 
 def load_dam_hourly(
@@ -253,6 +291,11 @@ def load_ancillary_hourly(
     Returns DataFrame with columns: delivery_date, hour_ending,
     regdn, regup, rrs, nspin, ecrs.
     """
+    if not _table_exists(db_path, "dam_asmcpc_hist"):
+        return pd.DataFrame(
+            columns=["delivery_date", "hour_ending", "regdn", "regup", "rrs", "nspin", "ecrs"]
+        )
+
     query = (
         "SELECT delivery_date, hour_ending, "
         "       regdn, regup, rrs, nspin, ecrs "
@@ -298,9 +341,20 @@ def load_rtm_components_hourly(
     Note: rtm_lmp_api has limited historical coverage (~5 weeks as of
     March 2026). Features will be NaN for dates outside its range.
     """
+    if not _table_exists(db_path, "rtm_lmp_api"):
+        return pd.DataFrame(
+            columns=[
+                "delivery_date",
+                "hour_ending",
+                "lmp",
+                "energy_component",
+                "congestion_component",
+                "loss_component",
+            ]
+        )
+
     query = (
-        "SELECT DATE(time) AS delivery_date, "
-        "       CAST(strftime('%H', time) AS INTEGER) + 1 AS hour_ending, "
+        "SELECT time, "
         "       AVG(lmp) AS lmp, "
         "       AVG(energy_component) AS energy_component, "
         "       AVG(congestion_component) AS congestion_component, "
@@ -310,12 +364,26 @@ def load_rtm_components_hourly(
     )
     params: list = [settlement_point]
     if date_from:
-        query += " AND DATE(time) >= ?"
-        params.append(date_from)
+        start_utc = (
+            pd.Timestamp(date_from)
+            .tz_localize(ERCOT_TZ)
+            .tz_convert(timezone.utc)
+            .tz_localize(None)
+            .isoformat()
+        )
+        query += " AND time >= ?"
+        params.append(start_utc)
     if date_to:
-        query += " AND DATE(time) < ?"
-        params.append(date_to)
-    query += " GROUP BY delivery_date, hour_ending ORDER BY delivery_date, hour_ending"
+        end_utc = (
+            pd.Timestamp(date_to)
+            .tz_localize(ERCOT_TZ)
+            .tz_convert(timezone.utc)
+            .tz_localize(None)
+            .isoformat()
+        )
+        query += " AND time < ?"
+        params.append(end_utc)
+    query += " GROUP BY time ORDER BY time"
 
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(query, conn, params=params)
@@ -323,8 +391,17 @@ def load_rtm_components_hourly(
     if df.empty:
         return df
 
-    df["delivery_date"] = df["delivery_date"].astype("string")
-    df["hour_ending"] = df["hour_ending"].astype("int8")
+    components = _utc_to_ercot_hourly_components(df["time"])
+    df = pd.concat([components, df.drop(columns=["time"])], axis=1)
+    df = df[df["repeated_hour"] == 0].drop(columns=["repeated_hour"])
+    df = (
+        df.groupby(["delivery_date", "hour_ending"], as_index=False)[
+            ["lmp", "energy_component", "congestion_component", "loss_component"]
+        ]
+        .mean()
+        .sort_values(["delivery_date", "hour_ending"])
+        .reset_index(drop=True)
+    )
     for col in ["lmp", "energy_component", "congestion_component", "loss_component"]:
         df[col] = df[col].astype("float32")
     return df
