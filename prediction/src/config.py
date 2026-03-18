@@ -25,8 +25,21 @@ INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "ercot")
 
 # Settlement points
 SETTLEMENT_POINTS = [
-    "HB_HOUSTON", "HB_NORTH", "HB_SOUTH", "HB_WEST",
-    "LZ_HOUSTON", "LZ_NORTH", "LZ_SOUTH", "LZ_WEST"
+    "HB_BUSAVG",
+    "HB_HOUSTON",
+    "HB_HUBAVG",
+    "HB_NORTH",
+    "HB_PAN",
+    "HB_SOUTH",
+    "HB_WEST",
+    "LZ_AEN",
+    "LZ_CPS",
+    "LZ_HOUSTON",
+    "LZ_LCRA",
+    "LZ_NORTH",
+    "LZ_RAYBN",
+    "LZ_SOUTH",
+    "LZ_WEST",
 ]
 
 # Default prediction horizons

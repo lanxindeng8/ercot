@@ -73,7 +73,7 @@ export default function PriceChart() {
   return (
     <div className="chart-container">
       <div className="chart-header">
-        <h2>LZ_WEST Price Chart - {data?.date || "Today"}</h2>
+        <h2>{data?.settlementPoint || "LZ_WEST"} Price Chart - {data?.date || "Today"}</h2>
         <div className="chart-controls">
           <button onClick={fetchData} disabled={loading}>
             {loading ? "Loading..." : "Refresh"}

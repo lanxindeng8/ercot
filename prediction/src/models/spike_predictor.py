@@ -18,6 +18,7 @@ import pandas as pd
 from catboost import CatBoostClassifier
 
 from prediction.src.features.unified_features import FEATURE_COLUMNS
+from ..config import SETTLEMENT_POINTS, SPIKE_CHECKPOINTS
 
 log = logging.getLogger(__name__)
 
@@ -33,9 +34,6 @@ SPIKE_FEATURES = [
 ]
 
 FEATURE_COLS = BASE_FEATURES + SPIKE_FEATURES
-
-SETTLEMENT_POINTS = ["hb_west"]
-
 
 @dataclass
 class SpikeAlert:
@@ -58,7 +56,7 @@ class SpikePredictor:
 
     def __init__(self, checkpoint_dir: Optional[Path] = None):
         if checkpoint_dir is None:
-            checkpoint_dir = Path(__file__).parent.parent.parent / "models" / "spike" / "checkpoints"
+            checkpoint_dir = SPIKE_CHECKPOINTS
 
         self.checkpoint_dir = Path(checkpoint_dir)
         self.models: Dict[str, CatBoostClassifier] = {}
@@ -71,7 +69,8 @@ class SpikePredictor:
             log.warning("Spike checkpoint dir not found: %s", self.checkpoint_dir)
             return
 
-        for sp in SETTLEMENT_POINTS:
+        for settlement_point in SETTLEMENT_POINTS:
+            sp = settlement_point.lower()
             model_path = self.checkpoint_dir / f"{sp}_spike_catboost.cbm"
             meta_path = self.checkpoint_dir / f"{sp}_spike_meta.json"
 
@@ -96,6 +95,18 @@ class SpikePredictor:
 
     def available_settlement_points(self) -> List[str]:
         return sorted(self.models.keys())
+
+    def supported_settlement_points(self) -> List[str]:
+        return [sp.lower() for sp in SETTLEMENT_POINTS]
+
+    def has_model(self, settlement_point: str) -> bool:
+        return settlement_point.lower() in self.models
+
+    def missing_model_message(self, settlement_point: str) -> str:
+        return (
+            f"No spike checkpoint found for '{settlement_point.upper()}'. "
+            f"Loaded models: {[sp.upper() for sp in self.available_settlement_points()]}"
+        )
 
     def add_spike_features(self, df: pd.DataFrame, settlement_point: str) -> pd.DataFrame:
         """Add spike-specific engineered features."""
@@ -149,7 +160,7 @@ class SpikePredictor:
         """
         sp = settlement_point.lower()
         if sp not in self.models:
-            raise ValueError(f"No spike model for '{sp}'. Available: {self.available_settlement_points()}")
+            raise ValueError(self.missing_model_message(sp))
 
         model = self.models[sp]
 

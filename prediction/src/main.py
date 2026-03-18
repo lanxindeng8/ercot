@@ -49,13 +49,16 @@ import sqlite3
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+HUB_SETTLEMENT_POINTS = [sp for sp in SETTLEMENT_POINTS if sp.startswith("HB_")]
+LOAD_ZONE_SETTLEMENT_POINTS = [sp for sp in SETTLEMENT_POINTS if sp.startswith("LZ_")]
+
 
 app = FastAPI(
     title="TrueFlux Prediction Service",
     description=(
         "API for ERCOT electricity price predictions.\n\n"
         "**Models:**\n"
-        "- **DAM V2** — Next-day DAM price (LightGBM, 5 settlement points)\n"
+        "- **DAM V2** — Next-day DAM price (LightGBM, per-settlement-point checkpoints)\n"
         "- **RTM** — Multi-horizon RTM price (1h/4h/24h, LightGBM)\n"
         "- **Delta Spread** — RTM-DAM spread with trading signals (CatBoost)\n"
         "- **Spike Detection** — Next-hour spike alerts (CatBoost, F1=0.939)\n"
@@ -243,8 +246,8 @@ async def health_check():
 async def list_settlement_points():
     """List available ERCOT settlement points."""
     return {
-        "hubs": ["HB_HOUSTON", "HB_NORTH", "HB_SOUTH", "HB_WEST"],
-        "load_zones": ["LZ_HOUSTON", "LZ_NORTH", "LZ_SOUTH", "LZ_WEST"],
+        "hubs": HUB_SETTLEMENT_POINTS,
+        "load_zones": LOAD_ZONE_SETTLEMENT_POINTS,
         "all": SETTLEMENT_POINTS,
     }
 
@@ -345,7 +348,8 @@ async def predict_dam_next_day(
     Uses LightGBM models trained per settlement point with 80 features.
     Fetches recent DAM + RTM data from InfluxDB, computes features, and predicts.
 
-    **Available settlement points**: hb_west, hb_north, hb_south, hb_houston, hb_busavg
+    Accepts any configured ERCOT settlement point. If a checkpoint has not been trained
+    for the requested point yet, the endpoint returns 404.
     """
     normalized_sp = _normalize_settlement_point(settlement_point)
 
@@ -354,10 +358,10 @@ async def predict_dam_next_day(
         raise HTTPException(status_code=503, detail="DAM V2 models not loaded")
 
     sp_key = normalized_sp.lower()
-    if sp_key not in predictor.available_settlement_points():
+    if not predictor.has_model(sp_key):
         raise HTTPException(
-            status_code=400,
-            detail=f"No model for '{settlement_point}'. Available: {predictor.available_settlement_points()}",
+            status_code=404,
+            detail=predictor.missing_model_message(normalized_sp),
         )
 
     target_dt = None
@@ -401,6 +405,8 @@ async def predict_dam_next_day(
                 for p in predictions
             ],
         }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -420,7 +426,7 @@ async def predict_rtm(
     Returns predicted RTM LMP price for 1-hour, 4-hour, and 24-hour ahead.
     Fetches recent market data, computes features, and runs inference.
 
-    **Available**: hb_west (more settlement points coming)
+    Accepts any configured ERCOT settlement point. Missing checkpoints return 404.
     """
     normalized_sp = _normalize_settlement_point(settlement_point)
 
@@ -429,10 +435,10 @@ async def predict_rtm(
         raise HTTPException(status_code=503, detail="RTM models not loaded")
 
     sp_key = normalized_sp.lower()
-    if sp_key not in predictor.available_settlement_points():
+    if not predictor.has_model(sp_key):
         raise HTTPException(
-            status_code=400,
-            detail=f"No RTM model for '{settlement_point}'. Available: {predictor.available_settlement_points()}",
+            status_code=404,
+            detail=predictor.missing_model_message(normalized_sp),
         )
 
     horizon_list = _parse_horizons(horizons)
@@ -463,6 +469,8 @@ async def predict_rtm(
                 for r in results
             ],
         }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -519,7 +527,7 @@ async def predict_spike(
 
     **Performance**: Precision=0.886, Recall=1.0, F1=0.939
 
-    **Available**: hb_west (more settlement points coming)
+    Accepts any configured ERCOT settlement point. Missing checkpoints return 404.
     """
     normalized_sp = _normalize_settlement_point(settlement_point)
 
@@ -528,10 +536,10 @@ async def predict_spike(
         raise HTTPException(status_code=503, detail="Spike models not loaded")
 
     sp_key = normalized_sp.lower()
-    if sp_key not in predictor.available_settlement_points():
+    if not predictor.has_model(sp_key):
         raise HTTPException(
-            status_code=400,
-            detail=f"No spike model for '{settlement_point}'. Available: {predictor.available_settlement_points()}",
+            status_code=404,
+            detail=predictor.missing_model_message(normalized_sp),
         )
 
     try:
@@ -559,6 +567,8 @@ async def predict_spike(
                 "lookahead": "1 hour",
             },
         }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -666,10 +676,10 @@ async def predict_bess(
     dam_predictor = get_dam_v2_predictor()
     if not dam_predictor.is_ready():
         raise HTTPException(status_code=503, detail="DAM models not loaded (required for BESS)")
-    if normalized_sp.lower() not in dam_predictor.available_settlement_points():
+    if not dam_predictor.has_model(normalized_sp):
         raise HTTPException(
-            status_code=400,
-            detail=f"No DAM model for '{settlement_point}'. Available: {dam_predictor.available_settlement_points()}",
+            status_code=404,
+            detail=dam_predictor.missing_model_message(normalized_sp),
         )
 
     bess = get_bess_predictor()
@@ -1290,10 +1300,12 @@ def _normalize_settlement_point(settlement_point: str) -> str:
     value = settlement_point.strip().upper()
     if not value:
         raise HTTPException(status_code=400, detail="Settlement point is required")
-    value = value.replace("LZ_", "HB_")
-    allowed = {sp.upper() for sp in SETTLEMENT_POINTS if sp.startswith("HB_")}
+    allowed = {sp.upper() for sp in SETTLEMENT_POINTS}
     if value not in allowed:
-        raise HTTPException(status_code=400, detail=f"Unsupported settlement point '{settlement_point}'")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported settlement point '{settlement_point}'. Available: {sorted(allowed)}",
+        )
     return value
 
 
@@ -1360,10 +1372,10 @@ async def dispatch_mining_schedule(
     dam_predictor = get_dam_v2_predictor()
     if not dam_predictor.is_ready():
         raise HTTPException(status_code=503, detail="DAM models not loaded")
-    if normalized_sp.lower() not in dam_predictor.available_settlement_points():
+    if not dam_predictor.has_model(normalized_sp):
         raise HTTPException(
-            status_code=400,
-            detail=f"No DAM model for '{settlement_point}'. Available: {dam_predictor.available_settlement_points()}",
+            status_code=404,
+            detail=dam_predictor.missing_model_message(normalized_sp),
         )
 
     try:
@@ -1527,10 +1539,10 @@ async def dispatch_bess_daily_signals(
     dam_predictor = get_dam_v2_predictor()
     if not dam_predictor.is_ready():
         raise HTTPException(status_code=503, detail="DAM models not loaded")
-    if normalized_sp.lower() not in dam_predictor.available_settlement_points():
+    if not dam_predictor.has_model(normalized_sp):
         raise HTTPException(
-            status_code=400,
-            detail=f"No DAM model for '{settlement_point}'.",
+            status_code=404,
+            detail=dam_predictor.missing_model_message(normalized_sp),
         )
 
     bess = get_bess_predictor()

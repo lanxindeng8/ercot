@@ -2,7 +2,8 @@
 DAM Price Predictor V2
 
 Production predictor using per-settlement-point LightGBM models.
-Trained with 41 features (temporal, lag, rolling, cross-market, fuel mix).
+Trained with 80 features (temporal, lag, rolling, cross-market, fuel mix,
+ancillary services, RTM components, fuel generation MW, cross-domain).
 """
 
 import logging
@@ -14,33 +15,45 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+from ..config import DAM_V2_CHECKPOINTS, SETTLEMENT_POINTS
+
 log = logging.getLogger(__name__)
 
-FUEL_COLS = ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]
-
 FEATURE_COLS = [
-    # Temporal
+    # Temporal (7)
     "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
     "is_holiday", "is_summer",
-    # DAM lags
+    # DAM lags (4)
     "dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h",
-    # RTM lags
+    # RTM lags (4)
     "rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h",
-    # DAM rolling
+    # DAM rolling (8)
     "dam_roll_24h_mean", "dam_roll_24h_std", "dam_roll_24h_min", "dam_roll_24h_max",
     "dam_roll_168h_mean", "dam_roll_168h_std", "dam_roll_168h_min", "dam_roll_168h_max",
-    # RTM rolling
+    # RTM rolling (8)
     "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
     "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
-    # Cross-market
+    # Cross-market (3)
     "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
-    # Fuel mix
-    *FUEL_COLS,
+    # Fuel mix pct (6)
+    "wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct",
+    # Ancillary service (13)
+    "regdn", "regup", "rrs", "nspin", "ecrs",
+    "reg_spread", "total_as_cost",
+    "regup_lag_24h", "rrs_lag_24h", "nspin_lag_24h", "total_as_lag_24h",
+    "total_as_roll_24h_mean", "total_as_roll_24h_std",
+    # RTM components (6)
+    "congestion_pct", "loss_pct", "energy_pct",
+    "congestion_ma_4h", "congestion_volatility_24h", "high_congestion_flag",
+    # Fuel gen MW (15)
+    "gas_gen_mw", "gas_cc_gen_mw", "coal_gen_mw", "nuclear_gen_mw",
+    "solar_gen_mw", "wind_gen_mw", "hydro_gen_mw", "biomass_gen_mw",
+    "total_gen_mw", "renewable_ratio", "thermal_ratio", "net_load_mw",
+    "solar_ramp_1h", "wind_ramp_1h", "gas_ramp_1h",
+    # Cross-domain (6)
+    "dam_as_ratio", "reg_spread_roll_24h_mean", "ecrs_lag_24h",
+    "gas_cc_share", "wind_ramp_4h", "solar_ramp_4h",
 ]
-
-# Settlement points with trained models
-SETTLEMENT_POINTS = ["hb_west", "hb_north", "hb_south", "hb_houston", "hb_busavg"]
-
 
 @dataclass
 class DAMV2Prediction:
@@ -55,13 +68,13 @@ class DAMV2Predictor:
     """
     DAM Price Predictor V2 using per-settlement-point LightGBM models.
 
-    Each model predicts DAM LMP given 41 features. One model per settlement
+    Each model predicts DAM LMP given 80 features. One model per settlement
     point, covering all 24 hours.
     """
 
     def __init__(self, checkpoint_dir: Optional[Path] = None):
         if checkpoint_dir is None:
-            checkpoint_dir = Path(__file__).parent.parent.parent / "models" / "dam_v2" / "checkpoints"
+            checkpoint_dir = DAM_V2_CHECKPOINTS
 
         self.checkpoint_dir = Path(checkpoint_dir)
         self.models: Dict[str, Any] = {}
@@ -73,7 +86,8 @@ class DAMV2Predictor:
             log.warning("DAM V2 checkpoint dir not found: %s", self.checkpoint_dir)
             return
 
-        for sp in SETTLEMENT_POINTS:
+        for settlement_point in SETTLEMENT_POINTS:
+            sp = settlement_point.lower()
             path = self.checkpoint_dir / f"{sp}_lightgbm.joblib"
             if path.exists():
                 try:
@@ -90,6 +104,18 @@ class DAMV2Predictor:
     def available_settlement_points(self) -> List[str]:
         return sorted(self.models.keys())
 
+    def supported_settlement_points(self) -> List[str]:
+        return [sp.lower() for sp in SETTLEMENT_POINTS]
+
+    def has_model(self, settlement_point: str) -> bool:
+        return settlement_point.lower() in self.models
+
+    def missing_model_message(self, settlement_point: str) -> str:
+        return (
+            f"No DAM V2 checkpoint found for '{settlement_point.upper()}'. "
+            f"Loaded models: {[sp.upper() for sp in self.available_settlement_points()]}"
+        )
+
     def predict(self, features_df: pd.DataFrame, settlement_point: str) -> List[DAMV2Prediction]:
         """
         Predict DAM prices from a feature DataFrame.
@@ -103,7 +129,7 @@ class DAMV2Predictor:
         """
         sp = settlement_point.lower()
         if sp not in self.models:
-            raise ValueError(f"No model for settlement point '{sp}'. Available: {self.available_settlement_points()}")
+            raise ValueError(self.missing_model_message(sp))
 
         model = self.models[sp]
         missing = [col for col in FEATURE_COLS if col not in features_df.columns]
@@ -112,10 +138,8 @@ class DAMV2Predictor:
 
         X = features_df[FEATURE_COLS].copy()
 
-        # Fill missing fuel cols with 0 (consistent with training)
-        for col in FUEL_COLS:
-            if col in X.columns:
-                X[col] = X[col].fillna(0)
+        # Fill NaN in nullable features with 0 (consistent with training)
+        X = X.fillna(0)
 
         preds = model.predict(X)
 

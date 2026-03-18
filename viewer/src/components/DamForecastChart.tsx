@@ -12,15 +12,27 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { asNumber, asString, fetchPredictionJson, isRecord } from "@/components/predictions";
+import { SETTLEMENT_POINTS } from "@/lib/constants";
 
-const SETTLEMENT_POINTS = ["hb_west", "hb_north", "hb_south", "hb_houston", "hb_busavg"];
 const SP_COLORS: Record<string, string> = {
   hb_west: "#4ecdc4",
   hb_north: "#ff6b6b",
   hb_south: "#ffd93d",
   hb_houston: "#6c5ce7",
   hb_busavg: "#a8e6cf",
+  hb_hubavg: "#ff9f43",
+  hb_pan: "#48dbfb",
+  lz_aen: "#1dd1a1",
+  lz_cps: "#f368e0",
+  lz_houston: "#ee5253",
+  lz_lcra: "#00d2d3",
+  lz_north: "#54a0ff",
+  lz_raybn: "#5f27cd",
+  lz_south: "#10ac84",
+  lz_west: "#feca57",
 };
+
+const DISPLAY_SETTLEMENT_POINTS = SETTLEMENT_POINTS.map((sp) => sp.toLowerCase());
 
 interface DamPrediction {
   hour_ending: string;
@@ -63,7 +75,7 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPoints, setSelectedPoints] = useState<Set<string>>(
-    new Set(SETTLEMENT_POINTS)
+    new Set(DISPLAY_SETTLEMENT_POINTS)
   );
 
   React.useEffect(() => {
@@ -74,7 +86,7 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
       setError(null);
       try {
         const settled = await Promise.allSettled(
-          SETTLEMENT_POINTS.map((sp) =>
+          DISPLAY_SETTLEMENT_POINTS.map((sp) =>
             fetchPredictionJson<unknown>(`/api/predictions/dam/next-day?settlement_point=${sp}`, {
               signal: controller.signal,
             })
@@ -144,7 +156,7 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
       </div>
 
       <div className="sp-toggles">
-        {SETTLEMENT_POINTS.map((sp) => (
+        {DISPLAY_SETTLEMENT_POINTS.map((sp) => (
           <button
             key={sp}
             type="button"
@@ -187,7 +199,7 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
                 formatter={(value) => [`$${Number(value).toFixed(2)}`, ""]}
               />
               <Legend />
-              {SETTLEMENT_POINTS.filter((sp) => selectedPoints.has(sp)).map((sp) => (
+              {DISPLAY_SETTLEMENT_POINTS.filter((sp) => selectedPoints.has(sp)).map((sp) => (
                 <Line
                   key={sp}
                   type="monotone"

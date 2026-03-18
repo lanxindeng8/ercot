@@ -2,7 +2,7 @@
 RTM Multi-Horizon Price Predictor
 
 Loads per-horizon LightGBM models (1h, 4h, 24h ahead) for RTM LMP prediction.
-Trained with 41 base features + 3 RTM-specific features = 44 total.
+Trained with 80 base features + 3 RTM-specific features = 83 total.
 """
 
 import logging
@@ -14,28 +14,44 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+from ..config import RTM_CHECKPOINTS, SETTLEMENT_POINTS
+
 log = logging.getLogger(__name__)
 
-FUEL_COLS = ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]
-
 BASE_FEATURE_COLS = [
-    # Temporal
+    # Temporal (7)
     "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
     "is_holiday", "is_summer",
-    # DAM lags
+    # DAM lags (4)
     "dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h",
-    # RTM lags
+    # RTM lags (4)
     "rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h",
-    # DAM rolling
+    # DAM rolling (8)
     "dam_roll_24h_mean", "dam_roll_24h_std", "dam_roll_24h_min", "dam_roll_24h_max",
     "dam_roll_168h_mean", "dam_roll_168h_std", "dam_roll_168h_min", "dam_roll_168h_max",
-    # RTM rolling
+    # RTM rolling (8)
     "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
     "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
-    # Cross-market
+    # Cross-market (3)
     "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
-    # Fuel mix
-    *FUEL_COLS,
+    # Fuel mix pct (6)
+    "wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct",
+    # Ancillary service (13)
+    "regdn", "regup", "rrs", "nspin", "ecrs",
+    "reg_spread", "total_as_cost",
+    "regup_lag_24h", "rrs_lag_24h", "nspin_lag_24h", "total_as_lag_24h",
+    "total_as_roll_24h_mean", "total_as_roll_24h_std",
+    # RTM components (6)
+    "congestion_pct", "loss_pct", "energy_pct",
+    "congestion_ma_4h", "congestion_volatility_24h", "high_congestion_flag",
+    # Fuel gen MW (15)
+    "gas_gen_mw", "gas_cc_gen_mw", "coal_gen_mw", "nuclear_gen_mw",
+    "solar_gen_mw", "wind_gen_mw", "hydro_gen_mw", "biomass_gen_mw",
+    "total_gen_mw", "renewable_ratio", "thermal_ratio", "net_load_mw",
+    "solar_ramp_1h", "wind_ramp_1h", "gas_ramp_1h",
+    # Cross-domain (6)
+    "dam_as_ratio", "reg_spread_roll_24h_mean", "ecrs_lag_24h",
+    "gas_cc_share", "wind_ramp_4h", "solar_ramp_4h",
 ]
 
 RTM_EXTRA_FEATURES = [
@@ -52,10 +68,6 @@ HORIZONS = {
     "4h": 4,
     "24h": 24,
 }
-
-# Settlement points with trained models
-SETTLEMENT_POINTS = ["hb_west"]
-
 
 @dataclass
 class RTMPrediction:
@@ -76,7 +88,7 @@ class RTMPredictor:
 
     def __init__(self, checkpoint_dir: Optional[Path] = None):
         if checkpoint_dir is None:
-            checkpoint_dir = Path(__file__).parent.parent.parent / "models" / "rtm" / "checkpoints"
+            checkpoint_dir = RTM_CHECKPOINTS
 
         self.checkpoint_dir = Path(checkpoint_dir)
         # models[sp][horizon_key] = model
@@ -89,7 +101,8 @@ class RTMPredictor:
             log.warning("RTM checkpoint dir not found: %s", self.checkpoint_dir)
             return
 
-        for sp in SETTLEMENT_POINTS:
+        for settlement_point in SETTLEMENT_POINTS:
+            sp = settlement_point.lower()
             self.models[sp] = {}
             for horizon_key, _ in HORIZONS.items():
                 path = self.checkpoint_dir / f"{sp}_rtm_lmp_{horizon_key}_lightgbm.joblib"
@@ -107,7 +120,19 @@ class RTMPredictor:
         return any(len(h) > 0 for h in self.models.values())
 
     def available_settlement_points(self) -> List[str]:
-        return [sp for sp, horizons in self.models.items() if len(horizons) > 0]
+        return sorted(sp for sp, horizons in self.models.items() if len(horizons) > 0)
+
+    def supported_settlement_points(self) -> List[str]:
+        return [sp.lower() for sp in SETTLEMENT_POINTS]
+
+    def has_model(self, settlement_point: str) -> bool:
+        return len(self.models.get(settlement_point.lower(), {})) > 0
+
+    def missing_model_message(self, settlement_point: str) -> str:
+        return (
+            f"No RTM checkpoint found for '{settlement_point.upper()}'. "
+            f"Loaded models: {[sp.upper() for sp in self.available_settlement_points()]}"
+        )
 
     def available_horizons(self, settlement_point: str) -> List[str]:
         sp = settlement_point.lower()
@@ -140,7 +165,7 @@ class RTMPredictor:
         """
         sp = settlement_point.lower()
         if sp not in self.models or len(self.models[sp]) == 0:
-            raise ValueError(f"No RTM models for '{sp}'. Available: {self.available_settlement_points()}")
+            raise ValueError(self.missing_model_message(sp))
 
         available = self.models[sp]
         if horizons is None:
@@ -157,10 +182,8 @@ class RTMPredictor:
                 df = self.add_rtm_features(df)
                 break
 
-        # Fill missing fuel cols
-        for col in FUEL_COLS:
-            if col in df.columns:
-                df[col] = df[col].fillna(0)
+        # Fill NaN in nullable features with 0 (consistent with training)
+        df = df.fillna(0)
 
         missing = [col for col in FEATURE_COLS if col not in df.columns]
         if missing:
