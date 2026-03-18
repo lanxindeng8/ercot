@@ -22,8 +22,8 @@ import pandas as pd
 
 from prediction.src.features.unified_features import (
     FEATURE_COLUMNS,
+    FUEL_GROUPS,
     TARGET_COLUMNS,
-    aggregate_fuel_mix_hourly,
     compute_features,
 )
 
@@ -40,10 +40,50 @@ TRAIN_END = "2024-01-01"  # train: < 2024
 VAL_END = "2025-01-01"    # val:   2024
                            # test:  >= 2025
 
+FLOAT32_COLUMNS = [
+    *[c for c in FEATURE_COLUMNS if c not in {"hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour", "is_holiday", "is_summer"}],
+    *TARGET_COLUMNS,
+]
+INT8_COLUMNS = [
+    "hour_ending",
+    "hour_of_day",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "is_peak_hour",
+    "is_holiday",
+    "is_summer",
+]
+
 
 # ---------------------------------------------------------------------------
 # Data loaders
 # ---------------------------------------------------------------------------
+
+
+def _optimize_price_frame(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = df.copy()
+    out["delivery_date"] = out["delivery_date"].astype("string")
+    out["hour_ending"] = out["hour_ending"].astype("int8")
+    out["lmp"] = out["lmp"].astype("float32")
+    return out
+
+
+def _coerce_training_schema(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+
+    out = df.copy()
+    out["delivery_date"] = out["delivery_date"].astype("string")
+    for col in INT8_COLUMNS:
+        if col in out.columns:
+            out[col] = out[col].astype("int8")
+    for col in FLOAT32_COLUMNS:
+        if col in out.columns:
+            out[col] = out[col].astype("float32")
+    return out
 
 
 def load_dam_hourly(
@@ -73,7 +113,7 @@ def load_dam_hourly(
 
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(query, conn, params=params)
-    return df
+    return _optimize_price_frame(df)
 
 
 def load_rtm_hourly(
@@ -108,7 +148,7 @@ def load_rtm_hourly(
         df = pd.read_sql_query(query, conn, params=params)
 
     df = df.rename(columns={"delivery_hour": "hour_ending"})
-    return df
+    return _optimize_price_frame(df)
 
 
 def load_fuel_mix(
@@ -137,6 +177,65 @@ def load_fuel_mix(
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(query, conn, params=params)
     return df
+
+
+def load_fuel_mix_hourly(
+    db_path: Path,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load hourly fuel-mix percentages without materializing the raw 15-min table."""
+    fuel_case = "CASE fuel " + " ".join(
+        f"WHEN '{raw}' THEN '{group}'" for raw, group in sorted(FUEL_GROUPS.items())
+    ) + " ELSE NULL END"
+    query = (
+        "SELECT delivery_date, "
+        "       CAST(((interval_15min - 1) / 4) AS INTEGER) + 1 AS hour_ending, "
+        f"      {fuel_case} AS fuel_group, "
+        "       SUM(generation_mw) AS generation_mw "
+        "FROM fuel_mix_hist "
+        "WHERE 1=1"
+    )
+    params: list = []
+    if date_from:
+        query += " AND delivery_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND delivery_date < ?"
+        params.append(date_to)
+    query += " GROUP BY delivery_date, hour_ending, fuel_group"
+
+    with sqlite3.connect(db_path) as conn:
+        hourly = pd.read_sql_query(query, conn, params=params)
+
+    if hourly.empty:
+        return hourly
+
+    hourly = hourly.dropna(subset=["fuel_group"])
+    wide = hourly.pivot_table(
+        index=["delivery_date", "hour_ending"],
+        columns="fuel_group",
+        values="generation_mw",
+        fill_value=0,
+    ).reset_index()
+    wide.columns.name = None
+
+    fuel_cols = [c for c in wide.columns if c not in ("delivery_date", "hour_ending")]
+    wide["total"] = wide[fuel_cols].sum(axis=1)
+
+    result = wide[["delivery_date", "hour_ending"]].copy()
+    result["delivery_date"] = result["delivery_date"].astype("string")
+    result["hour_ending"] = result["hour_ending"].astype("int8")
+    for grp in ["wind", "solar", "gas", "nuclear", "coal", "hydro"]:
+        if grp in wide.columns:
+            result[f"{grp}_pct"] = (
+                wide[grp].astype("float32") / wide["total"].replace(0, np.nan).astype("float32")
+            ) * np.float32(100.0)
+        else:
+            result[f"{grp}_pct"] = np.float32(np.nan)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +277,7 @@ def run_pipeline(
     # Fuel mix is shared across settlement points – load once.
     if verbose:
         print("Loading fuel mix …")
-    fuel_raw = load_fuel_mix(db_path)
-    fuel_hourly = aggregate_fuel_mix_hourly(fuel_raw) if not fuel_raw.empty else None
+    fuel_hourly = load_fuel_mix_hourly(db_path)
     if verbose and fuel_hourly is not None:
         print(f"  fuel-mix rows (hourly): {len(fuel_hourly):,}")
 
@@ -198,7 +296,7 @@ def run_pipeline(
             print(f"  ⚠ skipping {sp} – no data")
             continue
 
-        features = compute_features(dam, rtm, fuel_hourly)
+        features = _coerce_training_schema(compute_features(dam, rtm, fuel_hourly))
         if verbose:
             print(f"  feature rows: {len(features):,}")
 

@@ -151,21 +151,32 @@ def compute_features(
         rtm_hourly.rename(columns={"lmp": "rtm_lmp"}),
         on=["delivery_date", "hour_ending"],
         how="inner",
+        validate="one_to_one",
     )
 
-    # Build a proper datetime for sorting / rolling
+    if merged.empty:
+        return pd.DataFrame(columns=["delivery_date", "hour_ending"] + FEATURE_COLUMNS + TARGET_COLUMNS)
+
+    # Build a proper datetime for sorting / rolling.
+    # Reindex to a true hourly timeline so lag/rolling windows stay aligned
+    # across any missing delivery hours in the source data.
     merged["dt"] = pd.to_datetime(merged["delivery_date"]) + pd.to_timedelta(
         merged["hour_ending"] - 1, unit="h"
     )
-    merged = merged.sort_values("dt").reset_index(drop=True)
+    merged = merged.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+    merged = merged.set_index("dt").sort_index()
+    merged = merged.reindex(pd.date_range(merged.index.min(), merged.index.max(), freq="h"))
+    merged.index.name = "dt"
+    merged["delivery_date"] = merged.index.strftime("%Y-%m-%d")
+    merged["hour_ending"] = merged.index.hour + 1
 
     # ---- temporal features ----
     merged["hour_of_day"] = merged["hour_ending"]
-    merged["day_of_week"] = merged["dt"].dt.dayofweek
-    merged["month"] = merged["dt"].dt.month
+    merged["day_of_week"] = merged.index.dayofweek
+    merged["month"] = merged.index.month
     merged["is_weekend"] = (merged["day_of_week"] >= 5).astype(int)
     merged["is_peak_hour"] = merged["hour_ending"].isin(PEAK_HOURS).astype(int)
-    merged["is_holiday"] = merged["dt"].apply(is_us_holiday)
+    merged["is_holiday"] = pd.Series(merged.index, index=merged.index).apply(is_us_holiday)
     merged["is_summer"] = merged["month"].isin(SUMMER_MONTHS).astype(int)
 
     # ---- price lags ----
@@ -192,12 +203,19 @@ def compute_features(
 
     # ---- fuel mix ----
     if fuel_hourly is not None and not fuel_hourly.empty:
+        fuel_cols = [c for c in fuel_hourly.columns if c.endswith("_pct")]
+        fuel_hourly = (
+            fuel_hourly.groupby(["delivery_date", "hour_ending"], as_index=False)[fuel_cols]
+            .mean()
+        )
         merged = pd.merge(
-            merged,
+            merged.reset_index(drop=True),
             fuel_hourly,
             on=["delivery_date", "hour_ending"],
             how="left",
         )
+    else:
+        merged = merged.reset_index(drop=True)
     # Ensure fuel columns exist (fill with NaN when missing)
     for fc in ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]:
         if fc not in merged.columns:
@@ -251,6 +269,7 @@ def aggregate_fuel_mix_hourly(fuel_raw: pd.DataFrame) -> pd.DataFrame:
         values="generation_mw",
         fill_value=0,
     ).reset_index()
+    wide.columns.name = None
 
     # Compute total and percentages
     fuel_cols = [c for c in wide.columns if c not in ("delivery_date", "hour_ending")]

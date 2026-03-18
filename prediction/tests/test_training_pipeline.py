@@ -45,6 +45,7 @@ _spec.loader.exec_module(_tp)
 load_dam_hourly = _tp.load_dam_hourly
 load_rtm_hourly = _tp.load_rtm_hourly
 load_fuel_mix = _tp.load_fuel_mix
+load_fuel_mix_hourly = _tp.load_fuel_mix_hourly
 split_by_date = _tp.split_by_date
 run_pipeline = _tp.run_pipeline
 
@@ -178,6 +179,23 @@ class TestDataLoading:
         assert not df.empty
         assert "fuel" in df.columns
 
+    def test_load_fuel_mix_hourly_matches_python_aggregation(self, test_db):
+        raw = load_fuel_mix(test_db)
+        expected = aggregate_fuel_mix_hourly(raw).sort_values(
+            ["delivery_date", "hour_ending"]
+        ).reset_index(drop=True)
+        actual = load_fuel_mix_hourly(test_db).sort_values(
+            ["delivery_date", "hour_ending"]
+        ).reset_index(drop=True)
+
+        pd.testing.assert_frame_equal(
+            actual[expected.columns],
+            expected.astype(actual.dtypes.to_dict()),
+            check_exact=False,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Feature computation tests
@@ -235,6 +253,62 @@ class TestFeatureComputation:
         # (can't check exact index because of dropna, but value should exist)
         assert features["dam_lag_24h"].notna().all()
         assert features["dam_lag_168h"].notna().all()
+
+    def test_lag_features_follow_actual_hourly_time(self):
+        base = pd.date_range("2024-01-01 00:00:00", periods=240, freq="h")
+        dt_index = base.delete(50)
+        seq = np.arange(len(dt_index), dtype=np.float32)
+
+        dam = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": dt_index.hour + 1,
+                "lmp": seq,
+            }
+        )
+        rtm = dam.copy()
+        rtm["lmp"] = seq + 100.0
+
+        features = compute_features(dam, rtm)
+        features["dt"] = pd.to_datetime(features["delivery_date"]) + pd.to_timedelta(
+            features["hour_ending"] - 1, unit="h"
+        )
+        source = dam.assign(
+            dt=pd.to_datetime(dam["delivery_date"]) + pd.to_timedelta(dam["hour_ending"] - 1, unit="h")
+        )[["dt", "lmp"]].rename(columns={"lmp": "expected_lag_24h"})
+        source["dt"] = source["dt"] + pd.Timedelta(hours=24)
+
+        aligned = features.merge(source, on="dt", how="left")
+        np.testing.assert_allclose(aligned["dam_lag_24h"], aligned["expected_lag_24h"])
+
+    def test_duplicate_fuel_rows_do_not_duplicate_feature_rows(self):
+        dt_index = pd.date_range("2024-01-01 00:00:00", periods=24 * 10, freq="h")
+        values = np.arange(len(dt_index), dtype=np.float32)
+        dam = pd.DataFrame(
+            {
+                "delivery_date": dt_index.strftime("%Y-%m-%d"),
+                "hour_ending": dt_index.hour + 1,
+                "lmp": values,
+            }
+        )
+        rtm = dam.copy()
+        rtm["lmp"] = values + 1.0
+        fuel_hourly = pd.DataFrame(
+            {
+                "delivery_date": ["2024-01-10", "2024-01-10"],
+                "hour_ending": [24, 24],
+                "wind_pct": [10.0, 10.0],
+                "solar_pct": [20.0, 20.0],
+                "gas_pct": [30.0, 30.0],
+                "nuclear_pct": [20.0, 20.0],
+                "coal_pct": [10.0, 10.0],
+                "hydro_pct": [10.0, 10.0],
+            }
+        )
+
+        features = compute_features(dam, rtm, fuel_hourly)
+        dupes = features.duplicated(subset=["delivery_date", "hour_ending"])
+        assert not dupes.any()
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +372,20 @@ class TestEndToEnd:
         # At least train + val should have data (test may be empty if
         # synthetic DB doesn't extend past 2025)
         assert total_rows > 0
+
+    def test_run_pipeline_writes_stable_schema(self, test_db, tmp_path):
+        run_pipeline(
+            db_path=test_db,
+            output_dir=tmp_path / "out",
+            settlement_points=["HB_WEST"],
+            verbose=False,
+        )
+        df = pd.read_parquet(tmp_path / "out" / "hb_west" / "train.parquet")
+
+        assert str(df["delivery_date"].dtype) in {"string", "string[python]", "object"}
+        assert str(df["hour_ending"].dtype) == "int8"
+        assert str(df["dam_lmp"].dtype) == "float32"
+        assert str(df["dam_lag_24h"].dtype) == "float32"
 
 
 # ---------------------------------------------------------------------------

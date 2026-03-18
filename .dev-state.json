@@ -1,24 +1,22 @@
 {
   "version": 2,
-  "timestamp": "2026-03-17T23:19:00-05:00",
+  "timestamp": "2026-03-17T23:26:00-05:00",
   "state": "waiting_cc",
-  "task": "training-data-pipeline",
-  "task_description": "Sprint 1 Task 2: 统一训练数据管道 — feature engineering + parquet export",
+  "task": "codex-review-training-pipeline",
+  "task_description": "Codex reviewing Sprint 1.2, then Sprint 2 starts",
   "current_step": {
-    "name": "cc-building-training-pipeline",
-    "started_at": "2026-03-17T23:19:00-05:00",
+    "name": "codex-review-sprint1-task2",
+    "started_at": "2026-03-17T23:26:00-05:00",
     "eta": null,
-    "check_command": null,
-    "on_complete": "Run tests, Codex review, then continue to Sprint 2 (model retraining)"
+    "on_complete": "Apply fixes, then start Sprint 2 Task 1 (DAM v2 retraining)"
   },
   "next_steps": [
-    "Codex review Sprint 1 Task 2",
-    "Sprint 2 Task 1: DAM v2 重训",
+    "Sprint 2 Task 1: DAM v2 重训 with new pipeline",
     "Sprint 2 Task 2: RTM 模型升级",
     "Sprint 2 Task 3: Delta-Spread backtest"
   ],
   "background_processes": [
-    {"id": "cc-training-pipeline", "host": "local", "pid": 74532, "log": "session:wild-shoal"}
+    {"id": "codex-review-s1t2", "host": "local", "pid": 75202, "log": "session:oceanic-coral"}
   ],
-  "commits_this_session": ["1946303", "77639b3"]
+  "commits_this_session": ["1946303", "77639b3", "5e3136b"]
 }
