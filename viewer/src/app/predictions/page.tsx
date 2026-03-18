@@ -9,6 +9,7 @@ import SpikeAlertPanel from "@/components/SpikeAlertPanel";
 import WindForecastChart from "@/components/WindForecastChart";
 import LoadForecastChart from "@/components/LoadForecastChart";
 import BessSchedulePanel from "@/components/BessSchedulePanel";
+import AccuracyPanel from "@/components/AccuracyPanel";
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -96,6 +97,10 @@ export default function PredictionsPage() {
 
       <div className="dash-full-width">
         <DeltaSpreadPanel refreshKey={refreshKey} />
+      </div>
+
+      <div className="dash-full-width">
+        <AccuracyPanel refreshKey={refreshKey} />
       </div>
 
       <footer className="dash-footer">

@@ -32,6 +32,8 @@ from .models.load_predictor import get_load_predictor
 from .models.bess_predictor import get_bess_predictor
 from .features.unified_features import compute_features
 
+import sqlite3
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
@@ -93,6 +95,8 @@ class ModelInfoResponse(BaseModel):
 
 
 ALLOWED_HORIZONS = {"1h", "4h", "24h"}
+
+PREDICTIONS_DB = Path(__file__).resolve().parents[1] / "data" / "predictions.db"
 DELTA_SPREAD_SETTLEMENT_POINTS = {"LZ_WEST", "HB_WEST"}
 
 
@@ -658,6 +662,157 @@ async def predict_bess(
 
 
 # ---------------------------------------------------------------------------
+# Accuracy
+# ---------------------------------------------------------------------------
+
+@app.get("/accuracy", tags=["Accuracy"])
+async def get_accuracy(
+    model: str = Query(default="dam", description="Model name: dam or rtm"),
+    days: int = Query(default=7, ge=1, le=90, description="Number of days to look back"),
+):
+    """
+    Prediction accuracy statistics for recent predictions.
+
+    Returns MAE, RMSE, MAPE, count, directional accuracy, and per-hour breakdown.
+    """
+    if model not in ("dam", "rtm"):
+        raise HTTPException(status_code=400, detail=f"Model must be 'dam' or 'rtm', got '{model}'")
+
+    if not PREDICTIONS_DB.exists():
+        raise HTTPException(status_code=404, detail="Predictions database not found")
+
+    conn = sqlite3.connect(str(PREDICTIONS_DB))
+    try:
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+        # Overall metrics
+        rows = conn.execute(
+            """SELECT pa.error, pa.pct_error
+               FROM prediction_accuracy pa
+               JOIN predictions p ON p.id = pa.prediction_id
+               WHERE p.model = ? AND pa.computed_at >= ?""",
+            (model, cutoff),
+        ).fetchall()
+
+        if not rows:
+            return {
+                "status": "success",
+                "model": model,
+                "days": days,
+                "metrics": {"mae": None, "rmse": None, "mape": None, "directional_accuracy": None, "count": 0},
+                "hourly": {},
+                "recent_comparisons": [],
+            }
+
+        errors = [r[0] for r in rows]
+        pct_errors = [r[1] for r in rows]
+        n = len(errors)
+        abs_errors = [abs(e) for e in errors]
+        mae = sum(abs_errors) / n
+        rmse = float(np.sqrt(np.mean([e ** 2 for e in errors])))
+        valid_pct = [abs(p) for p in pct_errors if p is not None]
+        mape = sum(valid_pct) / len(valid_pct) if valid_pct else None
+
+        # Directional accuracy
+        direction_rows = conn.execute(
+            """SELECT p.predicted_value, a.actual_value
+               FROM prediction_accuracy pa
+               JOIN predictions p ON p.id = pa.prediction_id
+               JOIN actuals a ON a.id = pa.actual_id
+               WHERE p.model = ? AND pa.computed_at >= ?
+               ORDER BY p.target_time""",
+            (model, cutoff),
+        ).fetchall()
+
+        dir_acc = None
+        if len(direction_rows) > 1:
+            correct = sum(
+                1 for i in range(1, len(direction_rows))
+                if (direction_rows[i][0] - direction_rows[i - 1][1]) *
+                   (direction_rows[i][1] - direction_rows[i - 1][1]) > 0
+            )
+            dir_acc = round(correct / (len(direction_rows) - 1), 4)
+
+        metrics = {
+            "mae": round(mae, 4),
+            "rmse": round(rmse, 4),
+            "mape": round(mape, 4) if mape is not None else None,
+            "directional_accuracy": dir_acc,
+            "count": n,
+        }
+
+        # Per-hour breakdown
+        hour_rows = conn.execute(
+            """SELECT
+                   CAST(SUBSTR(p.target_time, 12, 2) AS INTEGER) as hour,
+                   pa.error,
+                   pa.pct_error
+               FROM prediction_accuracy pa
+               JOIN predictions p ON p.id = pa.prediction_id
+               WHERE p.model = ? AND pa.computed_at >= ?""",
+            (model, cutoff),
+        ).fetchall()
+
+        hourly: Dict[str, Any] = {}
+        hour_buckets: Dict[int, Dict[str, list]] = {}
+        for hour, error, pct_error in hour_rows:
+            if hour not in hour_buckets:
+                hour_buckets[hour] = {"errors": [], "pct_errors": []}
+            hour_buckets[hour]["errors"].append(error)
+            hour_buckets[hour]["pct_errors"].append(pct_error)
+
+        for hour in sorted(hour_buckets.keys()):
+            h_errors = hour_buckets[hour]["errors"]
+            h_pct = hour_buckets[hour]["pct_errors"]
+            h_n = len(h_errors)
+            h_abs = [abs(e) for e in h_errors]
+            h_valid_pct = [abs(p) for p in h_pct if p is not None]
+            hourly[str(hour)] = {
+                "mae": round(sum(h_abs) / h_n, 4),
+                "rmse": round(float(np.sqrt(np.mean([e ** 2 for e in h_errors]))), 4),
+                "mape": round(sum(h_valid_pct) / len(h_valid_pct), 4) if h_valid_pct else None,
+                "count": h_n,
+            }
+
+        # Recent comparisons
+        recent = conn.execute(
+            """SELECT p.target_time, p.settlement_point, p.predicted_value,
+                      a.actual_value, pa.error, pa.abs_error, pa.pct_error
+               FROM prediction_accuracy pa
+               JOIN predictions p ON p.id = pa.prediction_id
+               JOIN actuals a ON a.id = pa.actual_id
+               WHERE p.model = ? AND pa.computed_at >= ?
+               ORDER BY p.target_time DESC
+               LIMIT 48""",
+            (model, cutoff),
+        ).fetchall()
+
+        recent_comparisons = [
+            {
+                "target_time": r[0],
+                "settlement_point": r[1],
+                "predicted": round(r[2], 2),
+                "actual": round(r[3], 2),
+                "error": round(r[4], 2),
+                "abs_error": round(r[5], 2),
+                "pct_error": round(r[6], 2) if r[6] is not None else None,
+            }
+            for r in recent
+        ]
+
+        return {
+            "status": "success",
+            "model": model,
+            "days": days,
+            "metrics": metrics,
+            "hourly": hourly,
+            "recent_comparisons": recent_comparisons,
+        }
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -698,6 +853,18 @@ def _try_sqlite_features(settlement_point: str) -> Optional[pd.DataFrame]:
 
     if dam_raw.empty or rtm_raw.empty:
         log.info("SQLite returned no data for %s, will try InfluxDB", settlement_point)
+        return None
+
+    latest_rtm_ts = rtm_raw.index.max()
+    if latest_rtm_ts is None or pd.isna(latest_rtm_ts):
+        log.info("SQLite RTM data has no usable timestamps for %s, will try InfluxDB", settlement_point)
+        return None
+    latest_rtm_ts = pd.Timestamp(latest_rtm_ts)
+    stale_cutoff = pd.Timestamp.utcnow().tz_localize(None) - timedelta(hours=2)
+    if latest_rtm_ts.tzinfo is not None:
+        latest_rtm_ts = latest_rtm_ts.tz_convert("UTC").tz_localize(None)
+    if latest_rtm_ts < stale_cutoff:
+        log.info("SQLite RTM data is stale for %s (latest %s), will try InfluxDB", settlement_point, latest_rtm_ts)
         return None
 
     dam_hourly, rtm_hourly = _raw_to_hourly(dam_raw, rtm_raw)
@@ -746,7 +913,10 @@ def _raw_to_hourly(dam_raw: pd.DataFrame, rtm_raw: pd.DataFrame):
     if "date" not in dam_hourly.columns:
         dam_hourly["date"] = dam_hourly["timestamp"].dt.date
     dam_hourly["delivery_date"] = dam_hourly["date"].astype(str)
-    dam_hourly["hour_ending"] = dam_hourly["timestamp"].dt.hour + 1
+    if "hour" in dam_hourly.columns:
+        dam_hourly["hour_ending"] = dam_hourly["hour"]
+    else:
+        dam_hourly["hour_ending"] = dam_hourly["timestamp"].dt.hour + 1
     dam_hourly = dam_hourly[["delivery_date", "hour_ending", "lmp"]].drop_duplicates(
         subset=["delivery_date", "hour_ending"], keep="last"
     )
@@ -754,8 +924,14 @@ def _raw_to_hourly(dam_raw: pd.DataFrame, rtm_raw: pd.DataFrame):
     # RTM: needs delivery_date, hour_ending, lmp (aggregate 5-min to hourly)
     rtm_hourly = rtm_raw.reset_index()
     rtm_hourly = rtm_hourly.rename(columns={"rtm_price": "lmp"})
-    rtm_hourly["delivery_date"] = rtm_hourly["timestamp"].dt.date.astype(str)
-    rtm_hourly["hour_ending"] = rtm_hourly["timestamp"].dt.hour + 1
+    if "date" in rtm_hourly.columns:
+        rtm_hourly["delivery_date"] = pd.to_datetime(rtm_hourly["date"]).dt.strftime("%Y-%m-%d")
+    else:
+        rtm_hourly["delivery_date"] = rtm_hourly["timestamp"].dt.date.astype(str)
+    if "hour" in rtm_hourly.columns:
+        rtm_hourly["hour_ending"] = rtm_hourly["hour"]
+    else:
+        rtm_hourly["hour_ending"] = rtm_hourly["timestamp"].dt.hour + 1
     rtm_hourly = rtm_hourly.groupby(["delivery_date", "hour_ending"], as_index=False)["lmp"].mean()
 
     return dam_hourly, rtm_hourly
