@@ -176,6 +176,10 @@ class SpikePredictor:
             if col in df.columns:
                 df[col] = df[col].fillna(0)
 
+        missing = [col for col in FEATURE_COLS if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing spike feature columns: {missing}")
+
         X = df[FEATURE_COLS]
 
         # Get prediction threshold from meta (default 0.5)

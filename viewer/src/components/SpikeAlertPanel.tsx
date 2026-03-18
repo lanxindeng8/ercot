@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { asNumber, asString, fetchPredictionJson, isRecord } from "@/components/predictions";
 
 interface SpikeAlert {
   is_spike: boolean;
@@ -22,39 +23,62 @@ interface SpikeAlertPanelProps {
   refreshKey: number;
 }
 
+const CONFIDENCE_CLASS: Record<string, string> = {
+  high: "spike-conf-high",
+  medium: "spike-conf-medium",
+  low: "spike-conf-low",
+};
+
+function isSpikeResponse(value: unknown): value is SpikeResponse {
+  if (!isRecord(value)) return false;
+  if (asString(value.settlement_point) === null || !isRecord(value.alert)) return false;
+  return (
+    typeof value.alert.is_spike === "boolean" &&
+    asNumber(value.alert.spike_probability) !== null &&
+    asString(value.alert.confidence) !== null &&
+    asNumber(value.alert.threshold) !== null &&
+    asString(value.alert.lookahead) !== null
+  );
+}
+
 export default function SpikeAlertPanel({ refreshKey }: SpikeAlertPanelProps) {
   const [data, setData] = useState<SpikeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/predictions/spike");
-        if (!response.ok) throw new Error("Failed to fetch spike alert");
-        const result: SpikeResponse = await response.json();
-        if (cancelled) return;
+        const result = await fetchPredictionJson<unknown>("/api/predictions/spike", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!isSpikeResponse(result)) {
+          throw new Error("Spike response was malformed");
+        }
         setData(result);
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(err instanceof Error ? err.message : "Failed to load spike alert");
+          setData(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [refreshKey]);
 
   const probability = data?.alert.spike_probability ?? 0;
   const isSpike = data?.alert.is_spike ?? false;
   const confidence = data?.alert.confidence ?? "low";
+  const confidenceClass = CONFIDENCE_CLASS[confidence] ?? CONFIDENCE_CLASS.low;
 
   // SVG gauge parameters
   const gaugeRadius = 80;
@@ -104,7 +128,7 @@ export default function SpikeAlertPanel({ refreshKey }: SpikeAlertPanelProps) {
       {data && (
         <div className="spike-content">
           <div className="spike-gauge">
-            <svg viewBox="0 0 200 130" width="200" height="130">
+            <svg viewBox="0 0 200 130" width="100%" height="130" preserveAspectRatio="xMidYMid meet">
               {/* Background arc */}
               <path
                 d={describeArc(centerX, centerY, gaugeRadius, startAngle, endAngle)}
@@ -140,7 +164,7 @@ export default function SpikeAlertPanel({ refreshKey }: SpikeAlertPanelProps) {
             <div className="spike-meta">
               <div className="spike-meta-row">
                 <span className="spike-meta-label">Confidence</span>
-                <span className={`spike-confidence spike-conf-${confidence}`}>
+                <span className={`spike-confidence ${confidenceClass}`}>
                   {confidence.toUpperCase()}
                 </span>
               </div>

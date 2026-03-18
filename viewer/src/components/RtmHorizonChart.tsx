@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { asNumber, asString, fetchPredictionJson, isRecord } from "@/components/predictions";
 
 interface RtmPrediction {
   horizon: string;
@@ -37,6 +38,21 @@ interface RtmHorizonChartProps {
   refreshKey: number;
 }
 
+function isRtmResponse(value: unknown): value is RtmResponse {
+  if (!isRecord(value)) return false;
+  if (asString(value.model) === null || asString(value.settlement_point) === null) return false;
+  if (!Array.isArray(value.predictions)) return false;
+
+  return value.predictions.every((prediction) => {
+    if (!isRecord(prediction)) return false;
+    return (
+      asString(prediction.horizon) !== null &&
+      asNumber(prediction.hours_ahead) !== null &&
+      asNumber(prediction.predicted_price) !== null
+    );
+  });
+}
+
 export default function RtmHorizonChart({ refreshKey }: RtmHorizonChartProps) {
   const [data, setData] = useState<RtmPrediction[] | null>(null);
   const [meta, setMeta] = useState<{ model: string; point: string; time: string } | null>(null);
@@ -44,16 +60,19 @@ export default function RtmHorizonChart({ refreshKey }: RtmHorizonChartProps) {
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/predictions/rtm?horizons=1h,4h,24h");
-        if (!response.ok) throw new Error("Failed to fetch RTM predictions");
-        const result: RtmResponse = await response.json();
-        if (cancelled) return;
+        const result = await fetchPredictionJson<unknown>("/api/predictions/rtm?horizons=1h,4h,24h", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!isRtmResponse(result)) {
+          throw new Error("RTM response was malformed");
+        }
         setData(result.predictions);
         setMeta({
           model: result.model,
@@ -61,16 +80,18 @@ export default function RtmHorizonChart({ refreshKey }: RtmHorizonChartProps) {
           time: result.generated_at,
         });
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(err instanceof Error ? err.message : "Failed to load RTM predictions");
+          setData(null);
+          setMeta(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [refreshKey]);
 
   return (

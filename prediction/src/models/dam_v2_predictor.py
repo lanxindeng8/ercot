@@ -6,13 +6,12 @@ Trained with 41 features (temporal, lag, rolling, cross-market, fuel mix).
 """
 
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 
 log = logging.getLogger(__name__)
@@ -107,6 +106,10 @@ class DAMV2Predictor:
             raise ValueError(f"No model for settlement point '{sp}'. Available: {self.available_settlement_points()}")
 
         model = self.models[sp]
+        missing = [col for col in FEATURE_COLS if col not in features_df.columns]
+        if missing:
+            raise ValueError(f"Missing DAM feature columns: {missing}")
+
         X = features_df[FEATURE_COLS].copy()
 
         # Fill missing fuel cols with 0 (consistent with training)

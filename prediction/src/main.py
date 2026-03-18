@@ -10,14 +10,13 @@ FastAPI service for serving electricity price predictions:
 
 import logging
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import List, Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .config import SETTLEMENT_POINTS
 from .models.delta_spread import get_predictor
@@ -45,7 +44,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "*"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,7 +58,7 @@ app.add_middleware(
 class ModelStatus(BaseModel):
     name: str
     loaded: bool
-    details: Dict[str, Any] = {}
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):
@@ -81,6 +80,10 @@ class ModelInfoResponse(BaseModel):
     model_name: str
     status: str
     info: Dict[str, Any]
+
+
+ALLOWED_HORIZONS = {"1h", "4h", "24h"}
+DELTA_SPREAD_SETTLEMENT_POINTS = {"LZ_WEST", "HB_WEST"}
 
 
 # ---------------------------------------------------------------------------
@@ -206,11 +209,13 @@ async def predict_dam_next_day(
 
     **Available settlement points**: hb_west, hb_north, hb_south, hb_houston, hb_busavg
     """
+    normalized_sp = _normalize_settlement_point(settlement_point)
+
     predictor = get_dam_v2_predictor()
     if not predictor.is_ready():
         raise HTTPException(status_code=503, detail="DAM V2 models not loaded")
 
-    sp_key = settlement_point.lower().replace("lz_", "hb_")
+    sp_key = normalized_sp.lower()
     if sp_key not in predictor.available_settlement_points():
         raise HTTPException(
             status_code=400,
@@ -225,7 +230,7 @@ async def predict_dam_next_day(
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
 
     try:
-        features_df = _fetch_and_compute_features(settlement_point)
+        features_df = _fetch_and_compute_features(normalized_sp)
     except HTTPException:
         raise
     except Exception as e:
@@ -248,7 +253,7 @@ async def predict_dam_next_day(
         return {
             "status": "success",
             "model": "DAM V2 LightGBM",
-            "settlement_point": settlement_point,
+            "settlement_point": normalized_sp,
             "delivery_date": delivery_date,
             "generated_at": datetime.utcnow().isoformat(),
             "predictions": [
@@ -280,23 +285,23 @@ async def predict_rtm(
 
     **Available**: hb_west (more settlement points coming)
     """
+    normalized_sp = _normalize_settlement_point(settlement_point)
+
     predictor = get_rtm_predictor()
     if not predictor.is_ready():
         raise HTTPException(status_code=503, detail="RTM models not loaded")
 
-    sp_key = settlement_point.lower().replace("lz_", "hb_")
+    sp_key = normalized_sp.lower()
     if sp_key not in predictor.available_settlement_points():
         raise HTTPException(
             status_code=400,
             detail=f"No RTM model for '{settlement_point}'. Available: {predictor.available_settlement_points()}",
         )
 
-    horizon_list = None
-    if horizons:
-        horizon_list = [h.strip() for h in horizons.split(",")]
+    horizon_list = _parse_horizons(horizons)
 
     try:
-        features_df = _fetch_and_compute_features(settlement_point)
+        features_df = _fetch_and_compute_features(normalized_sp)
     except HTTPException:
         raise
     except Exception as e:
@@ -310,7 +315,7 @@ async def predict_rtm(
         return {
             "status": "success",
             "model": "RTM Multi-Horizon LightGBM",
-            "settlement_point": settlement_point,
+            "settlement_point": normalized_sp,
             "generated_at": datetime.utcnow().isoformat(),
             "predictions": [
                 {
@@ -344,13 +349,19 @@ async def predict_delta_spread(
     """
     try:
         predictor = get_predictor()
-        features = _generate_delta_features(hours_ahead)
-        predictions = predictor.predict(features)
-        predictions["settlement_point"] = settlement_point
-        predictions["forecast_horizon_hours"] = hours_ahead
-        predictions["model"] = "Delta Spread CatBoost (regression + binary + multiclass)"
-        predictions["status"] = "success"
-        return predictions
+        model_info = predictor.get_model_info()
+        if not any(model_info[key] for key in ("regression_loaded", "binary_loaded", "multiclass_loaded")):
+            raise HTTPException(status_code=503, detail="Delta spread models not loaded")
+        normalized_sp = _normalize_delta_settlement_point(settlement_point)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Delta spread live inference is unavailable for {normalized_sp}. "
+                "The endpoint previously returned synthetic random features, which has been disabled until a real pipeline is implemented."
+            ),
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -373,11 +384,13 @@ async def predict_spike(
 
     **Available**: hb_west (more settlement points coming)
     """
+    normalized_sp = _normalize_settlement_point(settlement_point)
+
     predictor = get_spike_predictor()
     if not predictor.is_ready():
         raise HTTPException(status_code=503, detail="Spike models not loaded")
 
-    sp_key = settlement_point.lower().replace("lz_", "hb_")
+    sp_key = normalized_sp.lower()
     if sp_key not in predictor.available_settlement_points():
         raise HTTPException(
             status_code=400,
@@ -385,23 +398,21 @@ async def predict_spike(
         )
 
     try:
-        features_df = _fetch_and_compute_features(settlement_point)
+        features_df = _fetch_and_compute_features(normalized_sp)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Data pipeline failed: {e}")
 
     # Use the most recent row for prediction
-    latest = features_df.tail(1)
-
     try:
-        alerts = predictor.predict(latest, sp_key)
-        alert = alerts[0]
+        alerts = predictor.predict(features_df, sp_key)
+        alert = alerts[-1]
 
         return {
             "status": "success",
             "model": "Spike Detection CatBoost",
-            "settlement_point": settlement_point,
+            "settlement_point": normalized_sp,
             "generated_at": datetime.utcnow().isoformat(),
             "alert": {
                 "is_spike": alert.is_spike,
@@ -428,15 +439,18 @@ def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
     """
     from .data.influxdb_fetcher import create_fetcher_from_env
 
+    fetcher = None
     try:
         fetcher = create_fetcher_from_env()
         # Fetch last 30 days (enough for 168h rolling windows + buffer)
         start = datetime.utcnow() - timedelta(days=30)
         dam_raw = fetcher.fetch_dam_prices(settlement_point=settlement_point, start_date=start)
         rtm_raw = fetcher.fetch_rtm_prices(settlement_point=settlement_point, start_date=start)
-        fetcher.close()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"InfluxDB fetch failed: {e}")
+    finally:
+        if fetcher is not None:
+            fetcher.close()
 
     if dam_raw.empty or rtm_raw.empty:
         raise HTTPException(status_code=404, detail=f"Insufficient data for {settlement_point}")
@@ -531,6 +545,51 @@ def _generate_delta_features(hours: int) -> pd.DataFrame:
         records.append(record)
 
     return pd.DataFrame(records)
+
+
+def _normalize_settlement_point(settlement_point: str) -> str:
+    value = settlement_point.strip().upper()
+    if not value:
+        raise HTTPException(status_code=400, detail="Settlement point is required")
+    value = value.replace("LZ_", "HB_")
+    allowed = {sp.upper() for sp in SETTLEMENT_POINTS if sp.startswith("HB_")}
+    if value not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported settlement point '{settlement_point}'")
+    return value
+
+
+def _normalize_delta_settlement_point(settlement_point: str) -> str:
+    value = settlement_point.strip().upper()
+    if value not in DELTA_SPREAD_SETTLEMENT_POINTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported settlement point '{settlement_point}'. Available: {sorted(DELTA_SPREAD_SETTLEMENT_POINTS)}",
+        )
+    return value
+
+
+def _parse_horizons(horizons: Optional[str]) -> Optional[List[str]]:
+    if horizons is None:
+        return None
+
+    parsed = [h.strip() for h in horizons.split(",") if h.strip()]
+    if not parsed:
+        raise HTTPException(status_code=400, detail="At least one horizon must be provided")
+
+    invalid = [h for h in parsed if h not in ALLOWED_HORIZONS]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported horizons {invalid}. Available: {sorted(ALLOWED_HORIZONS)}",
+        )
+
+    seen = set()
+    ordered = []
+    for horizon in parsed:
+        if horizon not in seen:
+            ordered.append(horizon)
+            seen.add(horizon)
+    return ordered
 
 
 if __name__ == "__main__":

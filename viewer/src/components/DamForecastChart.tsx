@@ -11,6 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { asNumber, asString, fetchPredictionJson, isRecord } from "@/components/predictions";
 
 const SETTLEMENT_POINTS = ["hb_west", "hb_north", "hb_south", "hb_houston", "hb_busavg"];
 const SP_COLORS: Record<string, string> = {
@@ -45,6 +46,17 @@ interface DamForecastChartProps {
   refreshKey: number;
 }
 
+function isDamResponse(value: unknown): value is DamResponse {
+  if (!isRecord(value)) return false;
+  if (asString(value.settlement_point) === null || asString(value.delivery_date) === null) return false;
+  if (!Array.isArray(value.predictions)) return false;
+
+  return value.predictions.every((prediction) => {
+    if (!isRecord(prediction)) return false;
+    return asString(prediction.hour_ending) !== null && asNumber(prediction.predicted_price) !== null;
+  });
+}
+
 export default function DamForecastChart({ refreshKey }: DamForecastChartProps) {
   const [data, setData] = useState<ChartPoint[] | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<string>("");
@@ -55,24 +67,35 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
   );
 
   React.useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function fetchAll() {
       setLoading(true);
       setError(null);
       try {
-        const responses = await Promise.all(
+        const settled = await Promise.allSettled(
           SETTLEMENT_POINTS.map((sp) =>
-            fetch(`/api/predictions/dam/next-day?settlement_point=${sp}`).then(
-              (r) => {
-                if (!r.ok) throw new Error(`DAM fetch failed for ${sp}`);
-                return r.json() as Promise<DamResponse>;
-              }
-            )
+            fetchPredictionJson<unknown>(`/api/predictions/dam/next-day?settlement_point=${sp}`, {
+              signal: controller.signal,
+            })
           )
         );
 
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
+
+        const responses = settled.flatMap((result) => {
+          if (result.status !== "fulfilled" || !isDamResponse(result.value)) {
+            return [];
+          }
+          return [result.value];
+        });
+
+        if (responses.length === 0) {
+          const firstError = settled.find((result) => result.status === "rejected");
+          throw firstError?.status === "rejected"
+            ? firstError.reason
+            : new Error("No DAM forecast responses were usable");
+        }
 
         const merged: ChartPoint[] = [];
         for (let i = 0; i < 24; i++) {
@@ -90,16 +113,18 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
         setData(merged);
         setDeliveryDate(responses[0].delivery_date);
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(err instanceof Error ? err.message : "Failed to load DAM forecasts");
+          setData(null);
+          setDeliveryDate("");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     fetchAll();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [refreshKey]);
 
   const togglePoint = (sp: string) => {
@@ -122,6 +147,7 @@ export default function DamForecastChart({ refreshKey }: DamForecastChartProps) 
         {SETTLEMENT_POINTS.map((sp) => (
           <button
             key={sp}
+            type="button"
             className={`sp-toggle ${selectedPoints.has(sp) ? "active" : ""}`}
             style={{
               borderColor: SP_COLORS[sp],

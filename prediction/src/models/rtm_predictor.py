@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 
 log = logging.getLogger(__name__)
@@ -146,6 +145,10 @@ class RTMPredictor:
         available = self.models[sp]
         if horizons is None:
             horizons = sorted(available.keys())
+        else:
+            invalid = [h for h in horizons if h not in HORIZONS]
+            if invalid:
+                raise ValueError(f"Unsupported RTM horizons: {invalid}")
 
         # Add RTM extra features if missing
         df = features_df.copy()
@@ -158,6 +161,10 @@ class RTMPredictor:
         for col in FUEL_COLS:
             if col in df.columns:
                 df[col] = df[col].fillna(0)
+
+        missing = [col for col in FEATURE_COLS if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing RTM feature columns: {missing}")
 
         X = df[FEATURE_COLS]
 

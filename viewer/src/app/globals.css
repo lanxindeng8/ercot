@@ -441,6 +441,7 @@ footer a:hover {
 
 .dash-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 12px;
   margin-bottom: 16px;
@@ -505,6 +506,7 @@ footer a:hover {
 /* RTM Metrics */
 .rtm-metrics {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-top: 16px;
 }
@@ -668,6 +670,7 @@ footer a:hover {
 
 .spike-gauge {
   flex-shrink: 0;
+  width: min(100%, 200px);
 }
 
 .spike-status {
@@ -743,14 +746,6 @@ footer a:hover {
 @media (max-width: 1024px) {
   .dash-grid {
     grid-template-columns: 1fr;
-  }
-
-  .dash-col-narrow {
-    flex-direction: row;
-  }
-
-  .dash-col-narrow > * {
-    flex: 1;
   }
 
   .dash-header {

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { asNumber, asString, fetchPredictionJson, isRecord } from "@/components/predictions";
 
 interface SpreadPrediction {
   target_hour: number;
@@ -35,34 +36,59 @@ interface DeltaSpreadPanelProps {
   refreshKey: number;
 }
 
+function isSpreadResponse(value: unknown): value is SpreadResponse {
+  if (!isRecord(value)) return false;
+  if (asString(value.settlement_point) === null || asNumber(value.forecast_horizon_hours) === null) return false;
+  if (!Array.isArray(value.predictions)) return false;
+
+  return value.predictions.every((prediction) => {
+    if (!isRecord(prediction)) return false;
+    return (
+      asNumber(prediction.target_hour) !== null &&
+      asString(prediction.target_date) !== null &&
+      asNumber(prediction.spread_value) !== null &&
+      asString(prediction.direction) !== null &&
+      asNumber(prediction.direction_probability) !== null &&
+      asNumber(prediction.spread_interval) !== null &&
+      asString(prediction.spread_interval_label) !== null &&
+      Array.isArray(prediction.interval_probabilities) &&
+      asString(prediction.signal) !== null
+    );
+  });
+}
+
 export default function DeltaSpreadPanel({ refreshKey }: DeltaSpreadPanelProps) {
   const [data, setData] = useState<SpreadResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/predictions/delta-spread");
-        if (!response.ok) throw new Error("Failed to fetch delta-spread predictions");
-        const result: SpreadResponse = await response.json();
-        if (cancelled) return;
+        const result = await fetchPredictionJson<unknown>("/api/predictions/delta-spread", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!isSpreadResponse(result)) {
+          throw new Error("Delta spread response was malformed");
+        }
         setData(result);
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(err instanceof Error ? err.message : "Failed to load spread predictions");
+          setData(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [refreshKey]);
 
   const totalPnl = data?.predictions.reduce((sum, p) => {
