@@ -81,6 +81,13 @@ class TestFeatureFetching:
             ),
         )
 
+        # Make SQLite path fail so it falls through to InfluxDB
+        monkeypatch.setattr(
+            main,
+            "_try_sqlite_features",
+            lambda sp: None,
+        )
+
         features = main._fetch_and_compute_features("HB_WEST")
 
         assert not features.empty
