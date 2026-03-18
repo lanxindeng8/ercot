@@ -106,7 +106,8 @@ class DeltaSpreadPredictor:
 
             # Multiclass prediction
             if self.multiclass_model:
-                mc_pred = int(self.multiclass_model.predict([row[self.FEATURE_NAMES]])[0])
+                mc_raw = self.multiclass_model.predict([row[self.FEATURE_NAMES]])[0]
+                mc_pred = int(mc_raw) if np.ndim(mc_raw) == 0 else int(mc_raw[0])
                 mc_prob = self.multiclass_model.predict_proba([row[self.FEATURE_NAMES]])[0]
                 pred["spread_interval"] = mc_pred
                 pred["spread_interval_label"] = self.SPREAD_INTERVALS.get(mc_pred, "Unknown")

@@ -8,12 +8,12 @@ load_dotenv()
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
 MODELS_DIR = BASE_DIR / "models"
-TRUEFLUX_DIR = Path("/Users/bot/projects/ercot")
 
-# Model paths
-DELTA_SPREAD_MODELS = TRUEFLUX_DIR / "Delta_Spread_Prediction" / "models"
-DAM_FORECAST_DIR = TRUEFLUX_DIR / "DAM_Price_Forecast"
-RTM_FORECAST_DIR = TRUEFLUX_DIR / "RTM_LMP_Price_Forecast"
+# Model checkpoint paths
+DAM_V2_CHECKPOINTS = MODELS_DIR / "dam_v2" / "checkpoints"
+RTM_CHECKPOINTS = MODELS_DIR / "rtm" / "checkpoints"
+SPIKE_CHECKPOINTS = MODELS_DIR / "spike" / "checkpoints"
+DELTA_SPREAD_MODELS = MODELS_DIR / "delta-spread" / "models"
 
 # InfluxDB configuration
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "https://us-east-1-1.aws.cloud2.influxdata.com")
