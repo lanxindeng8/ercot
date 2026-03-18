@@ -2,18 +2,15 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import DamForecastChart from "@/components/DamForecastChart";
-import RtmHorizonChart from "@/components/RtmHorizonChart";
-import DeltaSpreadPanel from "@/components/DeltaSpreadPanel";
-import SpikeAlertPanel from "@/components/SpikeAlertPanel";
-import WindForecastChart from "@/components/WindForecastChart";
-import LoadForecastChart from "@/components/LoadForecastChart";
-import BessSchedulePanel from "@/components/BessSchedulePanel";
-import AccuracyPanel from "@/components/AccuracyPanel";
+import StatusBanner from "@/components/dashboard/StatusBanner";
+import MiningScheduleCard from "@/components/dashboard/MiningScheduleCard";
+import BessArbitrageCard from "@/components/dashboard/BessArbitrageCard";
+import PriceForecastCard from "@/components/dashboard/PriceForecastCard";
+import AlertHistoryCard from "@/components/dashboard/AlertHistoryCard";
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
-export default function PredictionsPage() {
+export default function DashboardPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL / 1000);
@@ -24,13 +21,11 @@ export default function PredictionsPage() {
     setCountdown(REFRESH_INTERVAL / 1000);
   }, []);
 
-  // Auto-refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(refresh, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [refresh]);
 
-  // Countdown timer
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((c) => (c > 0 ? c - 1 : REFRESH_INTERVAL / 1000));
@@ -48,13 +43,13 @@ export default function PredictionsPage() {
     <div className="dash-container">
       <header className="dash-header">
         <div className="dash-header-left">
-          <h1>ERCOT Prediction Dashboard</h1>
-          <p>ML-powered price forecasts & trading signals</p>
+          <h1>Operations Dashboard</h1>
+          <p>Unified dispatch signals & market intelligence</p>
         </div>
         <nav className="dash-nav">
-          <Link href="/dashboard" className="dash-nav-link">Dashboard</Link>
+          <Link href="/dashboard" className="dash-nav-link active">Dashboard</Link>
           <Link href="/" className="dash-nav-link">Market Data</Link>
-          <Link href="/predictions" className="dash-nav-link active">Predictions</Link>
+          <Link href="/predictions" className="dash-nav-link">Predictions</Link>
           <Link href="/dispatch" className="dash-nav-link">Dispatch</Link>
         </nav>
         <div className="dash-header-right">
@@ -74,40 +69,24 @@ export default function PredictionsPage() {
         </div>
       </header>
 
-      <div className="dash-grid">
-        <div className="dash-col-wide">
-          <DamForecastChart refreshKey={refreshKey} />
-        </div>
-        <div className="dash-col-narrow">
-          <SpikeAlertPanel refreshKey={refreshKey} />
-          <RtmHorizonChart refreshKey={refreshKey} />
-        </div>
-      </div>
+      {/* Status Banner */}
+      <StatusBanner refreshKey={refreshKey} />
 
-      <div className="dash-grid">
-        <div className="dash-col-wide">
-          <WindForecastChart refreshKey={refreshKey} />
+      {/* Main grid: left column (operations), right column (alerts) */}
+      <div className="cust-grid">
+        <div className="cust-col-main">
+          <MiningScheduleCard refreshKey={refreshKey} />
+          <BessArbitrageCard refreshKey={refreshKey} />
         </div>
-        <div className="dash-col-narrow">
-          <LoadForecastChart refreshKey={refreshKey} />
+        <div className="cust-col-side">
+          <PriceForecastCard refreshKey={refreshKey} />
+          <AlertHistoryCard refreshKey={refreshKey} />
         </div>
-      </div>
-
-      <div className="dash-full-width">
-        <BessSchedulePanel refreshKey={refreshKey} />
-      </div>
-
-      <div className="dash-full-width">
-        <DeltaSpreadPanel refreshKey={refreshKey} />
-      </div>
-
-      <div className="dash-full-width">
-        <AccuracyPanel refreshKey={refreshKey} />
       </div>
 
       <footer className="dash-footer">
         <p>
-          Predictions powered by LightGBM, CatBoost & LP optimization trained on ERCOT historical data.
+          Dispatch signals powered by ML forecasts, LP optimization & risk analysis.
           Not financial advice.
         </p>
       </footer>

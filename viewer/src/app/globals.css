@@ -915,3 +915,449 @@ footer a:hover {
     justify-content: flex-start;
   }
 }
+
+/* ===== Customer Dashboard ===== */
+
+/* Status Banner */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 8px;
+  border: 1px solid #2a2a4a;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.status-banner-alert {
+  border-color: #d63031;
+  box-shadow: 0 0 16px rgba(214, 48, 49, 0.15);
+}
+
+.status-banner-error {
+  padding: 12px 24px;
+  color: #ff6b6b;
+  font-size: 13px;
+}
+
+.status-banner-loading {
+  width: 100%;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.status-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 140px;
+  padding: 4px 16px;
+}
+
+.status-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+.status-detail {
+  font-size: 10px;
+  color: #666;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.status-badge-pulse {
+  animation: spike-pulse 2s ease-in-out infinite;
+}
+
+.status-divider {
+  width: 1px;
+  height: 40px;
+  background: #2a2a4a;
+  flex-shrink: 0;
+}
+
+/* Dashboard Grid */
+.cust-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.cust-col-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cust-col-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Mining Schedule Card */
+.mining-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #12122a;
+  border-radius: 6px;
+}
+
+.mining-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.mining-stat-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mining-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+/* Mining Timeline */
+.mining-timeline {
+  margin-bottom: 12px;
+}
+
+.mining-timeline-label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.mining-timeline-bar {
+  display: flex;
+  gap: 2px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mining-timeline-cell {
+  flex: 1;
+  border-radius: 2px;
+  transition: opacity 0.2s;
+  cursor: default;
+}
+
+.mining-timeline-cell:hover {
+  opacity: 0.8;
+}
+
+.mining-timeline-hours {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #666;
+  padding: 0 2px;
+}
+
+/* Mining Legend */
+.mining-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  color: #888;
+}
+
+.mining-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mining-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* Mining Table */
+.mining-table-wrapper {
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.mining-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.mining-table th {
+  background: #12122a;
+  color: #aaa;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.mining-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #1e1e3a;
+  color: #ccc;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mining-table tbody tr:hover {
+  background: #1e1e3a;
+}
+
+.mining-he {
+  font-weight: 600;
+  color: #fff;
+}
+
+.mining-action-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+.mining-price {
+  font-family: "Consolas", "Monaco", monospace;
+  font-weight: 600;
+}
+
+.mining-reason {
+  font-size: 11px;
+  color: #999;
+}
+
+.mining-bess {
+  font-size: 11px;
+  color: #6c5ce7;
+}
+
+/* Price Forecast Metrics */
+.price-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.price-metric {
+  flex: 1;
+  padding: 10px 14px;
+  background: #12122a;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+}
+
+.price-metric-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.price-metric-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+/* Alert History */
+.alert-empty {
+  padding: 30px;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+
+.alert-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1e1e3a;
+  transition: background 0.2s;
+}
+
+.alert-item:hover {
+  background: #12122a;
+}
+
+.alert-item:last-child {
+  border-bottom: none;
+}
+
+.alert-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  font-family: "Consolas", "Monaco", monospace;
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+.alert-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.alert-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.alert-detail {
+  font-size: 11px;
+  color: #888;
+}
+
+.alert-critical .alert-action { color: #ff6b6b; }
+.alert-warning .alert-action { color: #ffd93d; }
+.alert-info .alert-action { color: #4ecdc4; }
+
+/* Retry Button */
+.retry-btn {
+  margin-left: 12px;
+  padding: 4px 12px;
+  background: #4ecdc4;
+  color: #0d0d1a;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.retry-btn:hover {
+  background: #45b7aa;
+}
+
+/* Loading Skeleton */
+.skeleton {
+  background: linear-gradient(90deg, #1e1e3a 25%, #2a2a4a 50%, #1e1e3a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Dashboard Responsive */
+@media (max-width: 1024px) {
+  .cust-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-banner {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .status-divider {
+    width: 100%;
+    height: 1px;
+  }
+
+  .status-item {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    padding: 4px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .mining-summary {
+    flex-direction: column;
+  }
+
+  .price-metrics {
+    flex-direction: column;
+  }
+
+  .mining-timeline-bar {
+    height: 24px;
+  }
+}

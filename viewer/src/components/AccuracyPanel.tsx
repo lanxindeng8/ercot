@@ -222,7 +222,7 @@ export default function AccuracyPanel({ refreshKey }: AccuracyPanelProps) {
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1e1e3a", border: "1px solid #444", borderRadius: 6 }}
                     labelFormatter={(h) => `Hour ${h}:00`}
-                    formatter={(value: number) => [`$${value.toFixed(2)}`, "MAE"]}
+                    formatter={(value) => [`$${Number(value ?? 0).toFixed(2)}`, "MAE"]}
                   />
                   <Bar
                     dataKey="mae"

@@ -293,12 +293,13 @@ export default function BessSignalPanel({ refreshKey }: BessSignalPanelProps) {
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1e1e3a", border: "1px solid #444", borderRadius: 6 }}
                   labelFormatter={(h) => `Hour Ending ${h}:00`}
-                  formatter={(value: number, name: string) => {
-                    if (name === "Power") return [`${value.toFixed(3)} MW`, ""];
-                    if (name === "SoC") return [`${value.toFixed(1)}%`, ""];
-                    if (name === "DAM Price") return [`$${value.toFixed(2)}`, ""];
-                    if (name === "Revenue") return [`$${value.toFixed(2)}`, ""];
-                    return [value, ""];
+                  formatter={(value, name) => {
+                    const v = Number(value ?? 0);
+                    if (name === "Power") return [`${v.toFixed(3)} MW`, ""];
+                    if (name === "SoC") return [`${v.toFixed(1)}%`, ""];
+                    if (name === "DAM Price") return [`$${v.toFixed(2)}`, ""];
+                    if (name === "Revenue") return [`$${v.toFixed(2)}`, ""];
+                    return [v, ""];
                   }}
                 />
                 <Legend />
@@ -370,7 +371,7 @@ export default function BessSignalPanel({ refreshKey }: BessSignalPanelProps) {
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1e1e3a", border: "1px solid #444", borderRadius: 6 }}
                   labelFormatter={(h) => `HE ${h}`}
-                  formatter={(v: number) => [`$${v.toFixed(2)}`, "Revenue"]}
+                  formatter={(v) => [`$${Number(v ?? 0).toFixed(2)}`, "Revenue"]}
                 />
                 <ReferenceLine y={0} stroke="#555" />
                 <Bar dataKey="revenue" name="Revenue" radius={[2, 2, 0, 0]}>
@@ -438,7 +439,7 @@ export default function BessSignalPanel({ refreshKey }: BessSignalPanelProps) {
                 <YAxis stroke="#888" tick={{ fill: "#888", fontSize: 10 }} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1e1e3a", border: "1px solid #444", borderRadius: 6 }}
-                  formatter={(v: number) => [`$${v.toFixed(2)}`, "Net PnL"]}
+                  formatter={(v) => [`$${Number(v ?? 0).toFixed(2)}`, "Net PnL"]}
                 />
                 <ReferenceLine y={0} stroke="#555" />
                 <Area

@@ -43,6 +43,7 @@ export default function DispatchPage() {
           <p>BESS arbitrage signals & mining coordination</p>
         </div>
         <nav className="dash-nav">
+          <Link href="/dashboard" className="dash-nav-link">Dashboard</Link>
           <Link href="/" className="dash-nav-link">Market Data</Link>
           <Link href="/predictions" className="dash-nav-link">Predictions</Link>
           <Link href="/dispatch" className="dash-nav-link active">Dispatch</Link>

@@ -9,8 +9,10 @@ export default function Home() {
         <h1>ERCOT Settlement Point Prices</h1>
         <p>Data sourced from ERCOT Public API</p>
         <nav className="main-nav">
+          <Link href="/dashboard" className="main-nav-link">Dashboard</Link>
           <Link href="/" className="main-nav-link active">Market Data</Link>
           <Link href="/predictions" className="main-nav-link">Predictions</Link>
+          <Link href="/dispatch" className="main-nav-link">Dispatch</Link>
         </nav>
       </header>
 
