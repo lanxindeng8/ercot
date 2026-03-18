@@ -10,6 +10,8 @@ Uses the trained GBMWindModel checkpoints with quantile outputs
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
@@ -47,6 +49,32 @@ class WindPredictor:
         self.metadata: Dict[str, Any] = {}
         self._load_model()
 
+    def _ensure_runtime_cache_dirs(self) -> None:
+        """Point optional plotting/cache libraries at a local writable path."""
+        candidates = []
+        try:
+            candidates.append(Path(tempfile.gettempdir()) / "ercot-runtime")
+        except Exception:
+            pass
+        candidates.extend([
+            self.checkpoint_dir / ".runtime-cache",
+            Path.cwd() / ".runtime-cache",
+        ])
+
+        for cache_root in candidates:
+            try:
+                matplotlib_dir = cache_root / "matplotlib"
+                joblib_dir = cache_root / "joblib"
+                for directory in (matplotlib_dir, joblib_dir):
+                    directory.mkdir(parents=True, exist_ok=True)
+                os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_dir))
+                os.environ.setdefault("JOBLIB_TEMP_FOLDER", str(joblib_dir))
+                return
+            except OSError:
+                continue
+
+        log.warning("Unable to prepare runtime cache directories for wind model")
+
     def _load_model(self):
         """Load the GBM wind model from checkpoint."""
         if not self.checkpoint_dir.exists():
@@ -59,6 +87,7 @@ class WindPredictor:
             return
 
         try:
+            self._ensure_runtime_cache_dirs()
             with open(meta_path) as f:
                 self.metadata = json.load(f)
 
@@ -94,9 +123,11 @@ class WindPredictor:
 
         # Get quantile predictions
         quantiles = self.model.predict_quantiles(features_df, quantiles=[0.1, 0.5, 0.9])
-        q10 = quantiles.get(0.1, np.zeros(len(features_df)))
-        q50 = quantiles.get(0.5, np.zeros(len(features_df)))
-        q90 = quantiles.get(0.9, np.zeros(len(features_df)))
+        q10 = np.asarray(quantiles.get(0.1, np.zeros(len(features_df))), dtype=float)
+        q50 = np.asarray(quantiles.get(0.5, np.zeros(len(features_df))), dtype=float)
+        q90 = np.asarray(quantiles.get(0.9, np.zeros(len(features_df))), dtype=float)
+        q10 = np.minimum(q10, q50)
+        q90 = np.maximum(q90, q50)
 
         results = []
         for i in range(len(features_df)):

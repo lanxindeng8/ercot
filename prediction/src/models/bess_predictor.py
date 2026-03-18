@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -50,6 +51,7 @@ class BessPredictor:
     def __init__(self):
         self._optimizer = None
         self._config = None
+        self._solver_backend = "unavailable"
         self._load_optimizer()
 
     def _load_optimizer(self):
@@ -67,12 +69,76 @@ class BessPredictor:
             # Use hourly resolution for DAM-based optimization
             self._config.delta_t = 1.0  # 1 hour
             self._optimizer = BatteryOptimizer(self._config)
+            self._solver_backend = "pulp_cbc"
             log.info("BESS optimizer loaded with default config")
         except Exception as e:
-            log.error("Failed to load BESS optimizer: %s", e)
+            log.warning("Failed to load LP BESS optimizer, falling back to heuristic dispatch: %s", e)
+            self._load_heuristic_optimizer()
+
+    def _load_heuristic_optimizer(self):
+        try:
+            import sys
+            bess_src = str(Path(__file__).parent.parent.parent / "models" / "battery-strategy" / "src")
+            if bess_src not in sys.path:
+                sys.path.insert(0, bess_src)
+
+            from battery_config import create_default_battery
+
+            self._config = create_default_battery()
+            self._config.delta_t = 1.0
+            self._optimizer = None
+            self._solver_backend = "heuristic"
+        except Exception as exc:
+            log.error("Failed to initialize fallback BESS config: %s", exc)
+            self._config = None
+            self._optimizer = None
+            self._solver_backend = "unavailable"
 
     def is_ready(self) -> bool:
-        return self._optimizer is not None
+        return self._config is not None and self._solver_backend != "unavailable"
+
+    def _heuristic_optimize(self, prices: np.ndarray):
+        """Fallback dispatch when PuLP is unavailable."""
+        T = len(prices)
+        p_ch = np.zeros(T, dtype=float)
+        p_dis = np.zeros(T, dtype=float)
+        soc = np.zeros(T, dtype=float)
+
+        low_threshold = float(np.quantile(prices, 0.3))
+        high_threshold = float(np.quantile(prices, 0.7))
+        soc_state = float(self._config.SoC_0)
+        total_revenue = 0.0
+
+        for t, price in enumerate(prices):
+            charge_room_mwh = max(0.0, (self._config.SoC_max - soc_state) * self._config.E_max)
+            discharge_room_mwh = max(0.0, (soc_state - self._config.SoC_min) * self._config.E_max)
+            power = 0.0
+
+            if price <= low_threshold and charge_room_mwh > 0:
+                power = min(self._config.P_ch_max, charge_room_mwh / (self._config.eta_ch * self._config.delta_t))
+                p_ch[t] = power
+                soc_state += (self._config.eta_ch * power * self._config.delta_t) / self._config.E_max
+            elif price >= high_threshold and discharge_room_mwh > 0:
+                power = min(self._config.P_dis_max, discharge_room_mwh * self._config.eta_dis / self._config.delta_t)
+                p_dis[t] = power
+                soc_state -= (power * self._config.delta_t) / (self._config.eta_dis * self._config.E_max)
+
+            soc_state = min(max(soc_state, self._config.SoC_min), self._config.SoC_max)
+            soc[t] = soc_state
+            total_revenue += price * (p_dis[t] - p_ch[t]) * self._config.delta_t
+            total_revenue -= self._config.c_deg * p_dis[t] * self._config.delta_t
+
+        net_power = p_dis - p_ch
+        ramp = np.diff(np.concatenate(([0.0], net_power)))
+        total_revenue -= self._config.lambda_delta_p * np.abs(ramp[1:]).sum()
+        return SimpleNamespace(
+            P_ch=p_ch,
+            P_dis=p_dis,
+            SoC=soc,
+            total_revenue=total_revenue,
+            status="HeuristicFallback",
+            solve_time=0.0,
+        )
 
     def optimize(self, dam_prices: List[float]) -> BessScheduleResult:
         """
@@ -91,7 +157,10 @@ class BessPredictor:
         if len(prices) != 24:
             raise ValueError(f"Expected 24 hourly prices, got {len(prices)}")
 
-        result = self._optimizer.optimize(prices)
+        if self._solver_backend == "heuristic":
+            result = self._heuristic_optimize(prices)
+        else:
+            result = self._optimizer.optimize(prices)
 
         schedule = []
         for h in range(24):
@@ -135,6 +204,7 @@ class BessPredictor:
         info: Dict[str, Any] = {
             "model_type": "BESS LP Optimizer (PuLP CBC)",
             "optimizer_loaded": self.is_ready(),
+            "solver_backend": self._solver_backend,
         }
         if self._config:
             info["battery_config"] = {

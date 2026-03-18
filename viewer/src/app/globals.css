@@ -807,6 +807,7 @@ footer a:hover {
 
 .bess-legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: center;
   margin-top: 12px;
@@ -860,6 +861,27 @@ footer a:hover {
 }
 
 @media (max-width: 640px) {
+  .dash-container {
+    padding: 12px;
+  }
+
+  .dash-header-right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dash-refresh-info {
+    align-items: flex-start;
+  }
+
+  .dash-refresh-btn {
+    width: 100%;
+  }
+
+  .dash-card {
+    padding: 16px;
+  }
+
   .dash-col-narrow {
     flex-direction: column;
   }
@@ -887,5 +909,9 @@ footer a:hover {
 
   .bess-summary {
     flex-direction: column;
+  }
+
+  .bess-legend {
+    justify-content: flex-start;
   }
 }

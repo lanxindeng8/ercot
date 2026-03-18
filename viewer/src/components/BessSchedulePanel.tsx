@@ -191,6 +191,13 @@ export default function BessSchedulePanel({ refreshKey }: BessSchedulePanelProps
                   domain={[0, 100]}
                   label={{ value: "SoC %", angle: 90, position: "insideRight", fill: "#888" }}
                 />
+                <YAxis
+                  yAxisId="price"
+                  orientation="right"
+                  stroke="#ff6b6b"
+                  tick={{ fill: "#ff6b6b", fontSize: 11 }}
+                  tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
+                />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1e1e3a", border: "1px solid #444", borderRadius: 6 }}
                   labelFormatter={(h) => `Hour Ending ${h}:00`}
@@ -219,7 +226,7 @@ export default function BessSchedulePanel({ refreshKey }: BessSchedulePanelProps
                   dot={false}
                 />
                 <Line
-                  yAxisId="power"
+                  yAxisId="price"
                   type="monotone"
                   dataKey="dam_price"
                   name="DAM Price"

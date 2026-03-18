@@ -35,7 +35,8 @@ interface ChartPoint {
   predicted: number;
   lower: number;
   upper: number;
-  range: [number, number];
+  bandBase: number;
+  bandSize: number;
 }
 
 interface WindForecastChartProps {
@@ -84,7 +85,8 @@ export default function WindForecastChart({ refreshKey }: WindForecastChartProps
           predicted: p.predicted_mw,
           lower: p.lower_bound_mw,
           upper: p.upper_bound_mw,
-          range: [p.lower_bound_mw, p.upper_bound_mw] as [number, number],
+          bandBase: p.lower_bound_mw,
+          bandSize: Math.max(p.upper_bound_mw - p.lower_bound_mw, 0),
         }));
 
         setData(points);
@@ -137,11 +139,23 @@ export default function WindForecastChart({ refreshKey }: WindForecastChartProps
               <Legend />
               <Area
                 type="monotone"
-                dataKey="range"
-                name="Uncertainty Band"
+                dataKey="bandBase"
+                name="Q10 Base"
+                stackId="wind-band"
                 stroke="none"
-                fill="#00b89433"
-                fillOpacity={0.3}
+                fillOpacity={0}
+                legendType="none"
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="bandSize"
+                name="Uncertainty Band"
+                stackId="wind-band"
+                stroke="none"
+                fill="#00b894"
+                fillOpacity={0.18}
+                isAnimationActive={false}
               />
               <Line
                 type="monotone"

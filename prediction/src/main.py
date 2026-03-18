@@ -13,6 +13,7 @@ FastAPI service for serving electricity price predictions:
 
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 import numpy as np
@@ -307,8 +308,7 @@ async def predict_dam_next_day(
         target_rows = features_df[features_df["delivery_date"] == str(target_dt)]
     else:
         # Use the last full day of features as a proxy for tomorrow's prediction
-        last_date = features_df["delivery_date"].max()
-        target_rows = features_df[features_df["delivery_date"] == last_date]
+        target_rows = _latest_complete_delivery_rows(features_df)
 
     if target_rows.empty:
         raise HTTPException(status_code=404, detail="Insufficient data to generate predictions for target date")
@@ -595,6 +595,11 @@ async def predict_bess(
     dam_predictor = get_dam_v2_predictor()
     if not dam_predictor.is_ready():
         raise HTTPException(status_code=503, detail="DAM models not loaded (required for BESS)")
+    if normalized_sp.lower() not in dam_predictor.available_settlement_points():
+        raise HTTPException(
+            status_code=400,
+            detail=f"No DAM model for '{settlement_point}'. Available: {dam_predictor.available_settlement_points()}",
+        )
 
     bess = get_bess_predictor()
     if not bess.is_ready():
@@ -607,9 +612,8 @@ async def predict_bess(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Data pipeline failed: {e}")
 
-    # Get last day's features for DAM prediction
-    last_date = features_df["delivery_date"].max()
-    target_rows = features_df[features_df["delivery_date"] == last_date]
+    # Get the latest complete day of features for DAM prediction
+    target_rows = _latest_complete_delivery_rows(features_df)
 
     if target_rows.empty:
         raise HTTPException(status_code=404, detail="Insufficient data for BESS optimization")
@@ -719,78 +723,107 @@ def _build_wind_features() -> pd.DataFrame:
     """
     from .models.wind_predictor import get_wind_predictor
 
+    history_path = (
+        Path(__file__).resolve().parents[1] / "models" / "wind" / "data" / "ercot_wind.csv"
+    )
+
     predictor = get_wind_predictor()
     feature_names = predictor.metadata.get("feature_names", [])
     if not feature_names:
         raise RuntimeError("Wind model metadata missing feature names")
+    if history_path.exists():
+        history_df = pd.read_csv(history_path)
+        history_df["timestamp"] = pd.to_datetime(history_df["timestamp"])
+        history_df = history_df.sort_values("timestamp")
+        if history_df.empty:
+            raise RuntimeError("Wind history is empty")
+    else:
+        raise RuntimeError(f"Wind history not found: {history_path}")
 
-    now = datetime.utcnow()
+    generation_history = history_df["wind_generation"].astype(float).tolist()
+    proxy_seed = float(np.mean(generation_history[-24:])) if generation_history else 0.0
+    now = history_df["timestamp"].iloc[-1]
     records = []
+
     for h in range(24):
-        hour = (now.hour + h + 1) % 24
         dt = now + timedelta(hours=h + 1)
-        record: Dict[str, Any] = {}
+        hour = dt.hour
+        recent = pd.Series(generation_history, dtype=float)
+        record: Dict[str, Any] = {
+            "normalized_power_mean": proxy_seed / 40000.0,
+            "ws_80m_mean": 3.0 + 9.0 * np.power(np.clip(proxy_seed / 40000.0, 0.001, 0.999), 1.0 / 3.0),
+            "ws_80m_std": (3.0 + 9.0 * np.power(np.clip(proxy_seed / 40000.0, 0.001, 0.999), 1.0 / 3.0)) * 0.15,
+            "wind_shear_mean": 0.2,
+            "power_sensitivity": max(0.0, 3 * ((max(3.0, 3.0 + 9.0 * np.power(np.clip(proxy_seed / 40000.0, 0.001, 0.999), 1.0 / 3.0)) - 3) / 9) ** 2 / 9),
+            "hour": hour,
+            "hour_of_day": hour,
+            "hour_sin": np.sin(2 * np.pi * hour / 24),
+            "hour_cos": np.cos(2 * np.pi * hour / 24),
+            "day_of_week": dt.weekday(),
+            "dow_sin": np.sin(2 * np.pi * dt.weekday() / 7),
+            "dow_cos": np.cos(2 * np.pi * dt.weekday() / 7),
+            "month": dt.month,
+            "month_sin": np.sin(2 * np.pi * dt.month / 12),
+            "month_cos": np.cos(2 * np.pi * dt.month / 12),
+            "doy_sin": np.sin(2 * np.pi * dt.timetuple().tm_yday / 365),
+            "doy_cos": np.cos(2 * np.pi * dt.timetuple().tm_yday / 365),
+            "is_weekend": int(dt.weekday() >= 5),
+            "is_peak_hour": int(7 <= hour <= 22),
+            "is_ramp_prone_hour": int(hour in (6, 7, 17, 18, 19)),
+            "is_morning": int(6 <= hour < 12),
+            "is_afternoon": int(12 <= hour < 18),
+            "is_evening": int(18 <= hour < 22),
+            "is_night": int(hour >= 22 or hour < 6),
+            "is_winter": int(dt.month in (12, 1, 2)),
+            "is_spring": int(dt.month in (3, 4, 5)),
+            "is_summer": int(dt.month in (6, 7, 8)),
+            "is_fall": int(dt.month in (9, 10, 11)),
+            "is_no_solar_period": int(hour >= 19 or hour < 7),
+            "is_evening_peak": int(17 <= hour < 21),
+            "hours_to_sunset": float(np.clip(19 - hour, -12, 12)),
+            "hours_since_sunset": float(hour - 19 if hour >= 19 else (hour + 5 if hour < 7 else 0)),
+        }
 
-        for feat in feature_names:
-            if feat == "hour" or feat == "hour_of_day":
-                record[feat] = hour
-            elif feat == "hour_sin":
-                record[feat] = np.sin(2 * np.pi * hour / 24)
-            elif feat == "hour_cos":
-                record[feat] = np.cos(2 * np.pi * hour / 24)
-            elif feat == "day_of_week":
-                record[feat] = dt.weekday()
-            elif feat == "dow_sin":
-                record[feat] = np.sin(2 * np.pi * dt.weekday() / 7)
-            elif feat == "dow_cos":
-                record[feat] = np.cos(2 * np.pi * dt.weekday() / 7)
-            elif feat == "month":
-                record[feat] = dt.month
-            elif feat == "month_sin":
-                record[feat] = np.sin(2 * np.pi * dt.month / 12)
-            elif feat == "month_cos":
-                record[feat] = np.cos(2 * np.pi * dt.month / 12)
-            elif feat == "doy_sin":
-                record[feat] = np.sin(2 * np.pi * dt.timetuple().tm_yday / 365)
-            elif feat == "doy_cos":
-                record[feat] = np.cos(2 * np.pi * dt.timetuple().tm_yday / 365)
-            elif feat == "is_weekend":
-                record[feat] = 1 if dt.weekday() >= 5 else 0
-            elif feat == "is_peak_hour":
-                record[feat] = 1 if 7 <= hour <= 22 else 0
-            elif feat == "is_ramp_prone_hour":
-                record[feat] = 1 if hour in (6, 7, 17, 18, 19) else 0
-            elif feat == "is_morning":
-                record[feat] = 1 if 6 <= hour < 12 else 0
-            elif feat == "is_afternoon":
-                record[feat] = 1 if 12 <= hour < 18 else 0
-            elif feat == "is_evening":
-                record[feat] = 1 if 18 <= hour < 22 else 0
-            elif feat == "is_night":
-                record[feat] = 1 if hour >= 22 or hour < 6 else 0
-            elif feat == "is_winter":
-                record[feat] = 1 if dt.month in (12, 1, 2) else 0
-            elif feat == "is_spring":
-                record[feat] = 1 if dt.month in (3, 4, 5) else 0
-            elif feat == "is_summer":
-                record[feat] = 1 if dt.month in (6, 7, 8) else 0
-            elif feat == "is_fall":
-                record[feat] = 1 if dt.month in (9, 10, 11) else 0
-            elif feat == "is_no_solar_period":
-                record[feat] = 1 if hour >= 20 or hour <= 5 else 0
-            elif feat == "is_evening_peak":
-                record[feat] = 1 if 17 <= hour <= 20 else 0
-            elif feat == "hours_to_sunset":
-                record[feat] = max(0, 19 - hour)
-            elif feat == "hours_since_sunset":
-                record[feat] = max(0, hour - 19) if hour >= 19 else max(0, hour + 5)
-            else:
-                # Lag, rolling, ramp, weather features — use reasonable defaults
-                record[feat] = 0.0
+        for lag in (1, 2, 3, 6, 12, 24):
+            record[f"wind_gen_lag_{lag}h"] = float(generation_history[-lag])
 
-        records.append(record)
+        for window in (6, 12, 24):
+            window_values = recent.iloc[-window:]
+            record[f"wind_gen_rolling_{window}h_mean"] = float(window_values.mean())
+            record[f"wind_gen_rolling_{window}h_std"] = float(window_values.std(ddof=1) if len(window_values) > 1 else 0.0)
+            record[f"wind_gen_rolling_{window}h_min"] = float(window_values.min())
+            record[f"wind_gen_rolling_{window}h_max"] = float(window_values.max())
 
-    return pd.DataFrame(records)
+        record["wind_gen_change_1h"] = float(generation_history[-1] - generation_history[-2])
+        record["wind_gen_change_3h"] = float(generation_history[-1] - generation_history[-4])
+        record["wind_gen_change_6h"] = float(generation_history[-1] - generation_history[-7])
+        record["wind_gen_roc_1h"] = float(record["wind_gen_change_1h"] / max(generation_history[-2], 100.0))
+        record["wind_gen_roc_3h"] = float(record["wind_gen_change_3h"] / max(generation_history[-4], 100.0))
+        record["ramp_down_1h"] = float(record["wind_gen_change_1h"] < -1000)
+        record["ramp_down_3h"] = float(record["wind_gen_change_3h"] < -2000)
+        record["ramp_up_1h"] = float(record["wind_gen_change_1h"] > 1000)
+
+        risk = 0.0
+        risk += 0.15 if record["wind_gen_change_1h"] < -1000 else 0.0
+        risk += 0.20 if record["wind_gen_change_1h"] < -2000 else 0.0
+        risk += 0.15 if record["is_no_solar_period"] else 0.0
+        risk += 0.15 if record["is_no_solar_period"] and record["is_evening_peak"] else 0.0
+        record["ramp_down_risk_score"] = float(min(max(risk, 0.0), 1.0))
+
+        full_record = {name: record.get(name, 0.0) for name in feature_names}
+        records.append(full_record)
+
+        predicted = float(np.clip(
+            0.55 * record["wind_gen_lag_1h"]
+            + 0.30 * record["wind_gen_rolling_6h_mean"]
+            + 0.15 * record["wind_gen_rolling_24h_mean"],
+            0.0,
+            40000.0,
+        ))
+        generation_history.append(predicted)
+        proxy_seed = predicted
+
+    return pd.DataFrame(records, columns=feature_names)
 
 
 def _build_load_features() -> pd.DataFrame:
@@ -802,60 +835,66 @@ def _build_load_features() -> pd.DataFrame:
     matching the trained model's feature set.
     """
     from .models.load_predictor import FEATURE_COLS
+    from pandas.tseries.holiday import USFederalHolidayCalendar
 
-    now = datetime.utcnow()
+    history_path = (
+        Path(__file__).resolve().parents[1] / "models" / "load" / "data" / "ercot_load.csv"
+    )
+    if not history_path.exists():
+        raise RuntimeError(f"Load history not found: {history_path}")
+
+    history_df = pd.read_csv(history_path)
+    history_df["timestamp"] = pd.to_datetime(history_df["timestamp"])
+    history_df = history_df.sort_values("timestamp")
+    if history_df.empty:
+        raise RuntimeError("Load history is empty")
+
+    load_history = history_df["total_load_mw"].astype(float).tolist()
+    calendar = USFederalHolidayCalendar()
+    forecast_index = pd.date_range(
+        history_df["timestamp"].iloc[-1] + timedelta(hours=1),
+        periods=24,
+        freq="h",
+    )
+    holidays = set(calendar.holidays(start=forecast_index.min(), end=forecast_index.max()).normalize())
     records = []
-    for h in range(24):
-        hour = (now.hour + h + 1) % 24
-        dt = now + timedelta(hours=h + 1)
 
+    for dt in forecast_index:
+        hour = dt.hour
+        recent = pd.Series(load_history, dtype=float)
         record = {
             "hour_of_day": hour,
             "day_of_week": dt.weekday(),
             "month": dt.month,
-            "is_weekend": 1 if dt.weekday() >= 5 else 0,
-            "is_peak_hour": 1 if 7 <= hour <= 22 else 0,
-            "season": (dt.month % 12) // 3,  # 0=winter, 1=spring, 2=summer, 3=fall
-            "is_holiday": 0,
-            # Placeholder lag/rolling features (in production, fetch real data)
-            "load_lag_1h": 45000.0,
-            "load_lag_2h": 44500.0,
-            "load_lag_3h": 44000.0,
-            "load_lag_6h": 42000.0,
-            "load_lag_12h": 40000.0,
-            "load_lag_24h": 44000.0,
-            "load_lag_48h": 43000.0,
-            "load_lag_168h": 44500.0,
-            "load_roll_6h_mean": 43000.0,
-            "load_roll_6h_std": 1500.0,
-            "load_roll_6h_min": 40000.0,
-            "load_roll_6h_max": 46000.0,
-            "load_roll_12h_mean": 42500.0,
-            "load_roll_12h_std": 2000.0,
-            "load_roll_12h_min": 38000.0,
-            "load_roll_12h_max": 47000.0,
-            "load_roll_24h_mean": 43000.0,
-            "load_roll_24h_std": 2500.0,
-            "load_roll_24h_min": 37000.0,
-            "load_roll_24h_max": 48000.0,
-            "load_roll_168h_mean": 43500.0,
-            "load_roll_168h_std": 3000.0,
-            "load_roll_168h_min": 35000.0,
-            "load_roll_168h_max": 50000.0,
-            "load_change_1h": 500.0,
-            "load_change_24h": 0.0,
-            "load_roc_1h": 0.01,
+            "is_weekend": int(dt.weekday() >= 5),
+            "is_peak_hour": int(7 <= hour <= 22),
+            "season": {12: 0, 1: 0, 2: 0, 3: 1, 4: 1, 5: 1, 6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3}[dt.month],
+            "is_holiday": int(dt.normalize() in holidays),
         }
-        records.append(record)
 
-    df = pd.DataFrame(records)
+        for lag in (1, 2, 3, 6, 12, 24, 48, 168):
+            record[f"load_lag_{lag}h"] = float(load_history[-lag])
 
-    # Ensure all required columns exist
-    for col in FEATURE_COLS:
-        if col not in df.columns:
-            df[col] = 0.0
+        for window in (6, 12, 24, 168):
+            window_values = recent.iloc[-window:]
+            record[f"load_roll_{window}h_mean"] = float(window_values.mean())
+            record[f"load_roll_{window}h_std"] = float(window_values.std(ddof=1) if len(window_values) > 1 else 0.0)
+            record[f"load_roll_{window}h_min"] = float(window_values.min())
+            record[f"load_roll_{window}h_max"] = float(window_values.max())
 
-    return df[FEATURE_COLS]
+        record["load_change_1h"] = float(load_history[-1] - load_history[-2])
+        record["load_change_24h"] = float(load_history[-1] - load_history[-25])
+        record["load_roc_1h"] = float(record["load_change_1h"] / max(load_history[-2], 1000.0))
+        records.append({col: record.get(col, 0.0) for col in FEATURE_COLS})
+
+        baseline = 0.50 * record["load_lag_24h"] + 0.35 * record["load_lag_1h"] + 0.15 * record["load_roll_24h_mean"]
+        if record["is_peak_hour"]:
+            baseline += 1200.0
+        if record["is_weekend"]:
+            baseline -= 900.0
+        load_history.append(float(max(baseline, 0.0)))
+
+    return pd.DataFrame(records, columns=FEATURE_COLS)
 
 
 def _generate_delta_features(hours: int) -> pd.DataFrame:
@@ -932,6 +971,16 @@ def _normalize_settlement_point(settlement_point: str) -> str:
     if value not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported settlement point '{settlement_point}'")
     return value
+
+
+def _latest_complete_delivery_rows(features_df: pd.DataFrame) -> pd.DataFrame:
+    counts = features_df.groupby("delivery_date")["hour_ending"].nunique().sort_index()
+    complete_dates = counts[counts >= 24]
+    if complete_dates.empty:
+        return pd.DataFrame(columns=features_df.columns)
+    latest_date = complete_dates.index[-1]
+    rows = features_df[features_df["delivery_date"] == latest_date].copy()
+    return rows.sort_values("hour_ending").head(24)
 
 
 def _normalize_delta_settlement_point(settlement_point: str) -> str:

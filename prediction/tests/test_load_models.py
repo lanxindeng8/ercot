@@ -183,6 +183,20 @@ class TestLoadPredictor:
         assert results[0].hour_ending == 15  # 14 + 1
         assert results[0].predicted_load_mw == 45000.0
 
+    def test_predictor_uses_metadata_feature_subset(self, tmp_path):
+        mod = _import_load_predictor()
+        import json
+        import joblib
+
+        joblib.dump(_FakeModel([47000.0]), tmp_path / "load_catboost.joblib")
+        (tmp_path / "load_catboost_meta.json").write_text(json.dumps({"features": ["hour_of_day", "month"]}))
+
+        predictor = mod.LoadPredictor(checkpoint_dir=tmp_path)
+        df = pd.DataFrame({"hour_of_day": [14], "month": [7], "unused": [999]})
+
+        results = predictor.predict(df)
+        assert results[0].predicted_load_mw == 47000.0
+
     def test_get_model_info(self, tmp_path):
         mod = _import_load_predictor()
         predictor = mod.LoadPredictor(checkpoint_dir=tmp_path)

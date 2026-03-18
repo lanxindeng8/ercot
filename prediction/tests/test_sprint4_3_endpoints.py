@@ -196,6 +196,7 @@ class TestBessEndpoint:
 
         features = pd.DataFrame({
             "delivery_date": ["2025-01-02"] * 24,
+            "hour_ending": list(range(1, 25)),
             "hour_of_day": list(range(24)),
         })
 
@@ -233,6 +234,9 @@ class TestBessEndpoint:
             def is_ready(self):
                 return True
 
+            def available_settlement_points(self):
+                return ["hb_west"]
+
         class FakeBessPredictor:
             def is_ready(self):
                 return False
@@ -261,6 +265,25 @@ class TestBessEndpoint:
         result = asyncio.run(main.bess_model_info())
         assert result.model_name == "bess"
         assert result.status == "loaded"
+
+    def test_predict_bess_rejects_unsupported_point(self, monkeypatch):
+        class FakeDamPredictor:
+            def is_ready(self):
+                return True
+
+            def available_settlement_points(self):
+                return ["hb_west"]
+
+        class FakeBessPredictor:
+            def is_ready(self):
+                return True
+
+        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
+        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(main.predict_bess(settlement_point="HB_NORTH"))
+        assert exc.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -331,3 +354,15 @@ class TestFeatureBuilders:
         assert len(df) == 24
         for col in FEATURE_COLS:
             assert col in df.columns, f"Missing column: {col}"
+
+    def test_latest_complete_delivery_rows_prefers_full_day(self):
+        df = pd.DataFrame({
+            "delivery_date": ["2025-01-01"] * 24 + ["2025-01-02"] * 12,
+            "hour_ending": list(range(1, 25)) + list(range(1, 13)),
+            "value": list(range(36)),
+        })
+
+        result = main._latest_complete_delivery_rows(df)
+        assert len(result) == 24
+        assert result["delivery_date"].nunique() == 1
+        assert result["delivery_date"].iloc[0] == "2025-01-01"

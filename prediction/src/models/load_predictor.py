@@ -9,6 +9,8 @@ Trained with temporal, lag, and rolling features from fuel_mix_hist.
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
@@ -81,11 +83,39 @@ class LoadPredictor:
         self.metadata: Dict[str, Any] = {}
         self._load_models()
 
+    def _ensure_runtime_cache_dirs(self) -> None:
+        """Point optional plotting/cache libraries at a local writable path."""
+        candidates = []
+        try:
+            candidates.append(Path(tempfile.gettempdir()) / "ercot-runtime")
+        except Exception:
+            pass
+        candidates.extend([
+            self.checkpoint_dir / ".runtime-cache",
+            Path.cwd() / ".runtime-cache",
+        ])
+
+        for cache_root in candidates:
+            try:
+                matplotlib_dir = cache_root / "matplotlib"
+                joblib_dir = cache_root / "joblib"
+                for directory in (matplotlib_dir, joblib_dir):
+                    directory.mkdir(parents=True, exist_ok=True)
+                os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_dir))
+                os.environ.setdefault("JOBLIB_TEMP_FOLDER", str(joblib_dir))
+                return
+            except OSError:
+                continue
+
+        log.warning("Unable to prepare runtime cache directories")
+
     def _load_models(self):
         """Load available model checkpoints."""
         if not self.checkpoint_dir.exists():
             log.warning("Load checkpoint dir not found: %s", self.checkpoint_dir)
             return
+
+        self._ensure_runtime_cache_dirs()
 
         for name, filename in self.MODEL_FILES.items():
             path = self.checkpoint_dir / filename
@@ -107,6 +137,26 @@ class LoadPredictor:
     def is_ready(self) -> bool:
         return len(self.models) > 0
 
+    def _feature_columns_for_model(self, name: str) -> List[str]:
+        meta = self.metadata.get(name, {})
+        columns = meta.get("features")
+        if isinstance(columns, list) and columns:
+            return columns
+        return FEATURE_COLS
+
+    def _prepare_features(self, features_df: pd.DataFrame, feature_cols: List[str], *, as_category: bool) -> pd.DataFrame:
+        missing = [col for col in feature_cols if col not in features_df.columns]
+        if missing:
+            raise ValueError(f"Missing load feature columns: {missing}")
+
+        X = features_df[feature_cols].copy()
+        categorical = [col for col in CATEGORICAL_FEATURES if col in X.columns]
+        for col in categorical:
+            X[col] = X[col].astype(int)
+            if as_category:
+                X[col] = X[col].astype("category")
+        return X
+
     def predict(self, features_df: pd.DataFrame) -> List[LoadPrediction]:
         """
         Predict total system load from a feature DataFrame.
@@ -120,19 +170,12 @@ class LoadPredictor:
         if not self.is_ready():
             raise RuntimeError("No load models loaded")
 
-        missing = [col for col in FEATURE_COLS if col not in features_df.columns]
-        if missing:
-            raise ValueError(f"Missing load feature columns: {missing}")
-
-        X = features_df[FEATURE_COLS].copy()
-
         # Collect predictions from all loaded models
         preds = []
         for name, model in self.models.items():
-            if name == "catboost":
-                preds.append(model.predict(X.values))
-            else:
-                preds.append(model.predict(X.values))
+            feature_cols = self._feature_columns_for_model(name)
+            X = self._prepare_features(features_df, feature_cols, as_category=name == "lightgbm")
+            preds.append(np.asarray(model.predict(X), dtype=float))
 
         # Ensemble average
         y_pred = np.mean(preds, axis=0)
@@ -152,8 +195,11 @@ class LoadPredictor:
         if not self.is_ready():
             raise RuntimeError("No load models loaded")
 
-        X = features_df[FEATURE_COLS].values
-        preds = [model.predict(X) for model in self.models.values()]
+        preds = []
+        for name, model in self.models.items():
+            feature_cols = self._feature_columns_for_model(name)
+            X = self._prepare_features(features_df, feature_cols, as_category=name == "lightgbm")
+            preds.append(np.asarray(model.predict(X), dtype=float))
         return np.mean(preds, axis=0)
 
     def get_model_info(self) -> Dict[str, Any]:
