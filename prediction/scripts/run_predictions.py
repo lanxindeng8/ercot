@@ -14,10 +14,10 @@ import json
 import logging
 import sqlite3
 import sys
-import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -28,6 +28,8 @@ import httpx
 API_BASE = "http://127.0.0.1:8011"
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "predictions.db"
 REQUEST_TIMEOUT = 60.0
+DB_TIMEOUT_SECONDS = 30.0
+CENTRAL_TZ = ZoneInfo("America/Chicago")
 
 DAM_SETTLEMENT_POINTS = ["HB_WEST", "HB_NORTH", "HB_SOUTH", "HB_HOUSTON", "HB_BUSAVG"]
 RTM_SETTLEMENT_POINTS = ["HB_WEST"]
@@ -48,32 +50,35 @@ log = logging.getLogger("prediction-runner")
 def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """Initialize SQLite database with predictions and actuals tables."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=DB_TIMEOUT_SECONDS)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(f"PRAGMA busy_timeout = {int(DB_TIMEOUT_SECONDS * 1000)}")
 
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             model TEXT NOT NULL,
-            settlement_point TEXT,
+            settlement_point TEXT NOT NULL DEFAULT '',
             target_time TEXT NOT NULL,
-            horizon TEXT,
+            horizon TEXT NOT NULL DEFAULT '',
             predicted_value REAL NOT NULL,
             unit TEXT NOT NULL DEFAULT 'USD/MWh',
             metadata TEXT,
             generated_at TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(model, settlement_point, target_time, horizon)
         );
 
         CREATE TABLE IF NOT EXISTS actuals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             market TEXT NOT NULL,
-            settlement_point TEXT,
+            settlement_point TEXT NOT NULL DEFAULT '',
             target_time TEXT NOT NULL,
             actual_value REAL NOT NULL,
             unit TEXT NOT NULL DEFAULT 'USD/MWh',
-            fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(market, settlement_point, target_time)
         );
 
         CREATE TABLE IF NOT EXISTS prediction_accuracy (
@@ -111,10 +116,17 @@ def store_prediction(
     generated_at: Optional[str] = None,
 ) -> int:
     """Insert a prediction row and return its ID."""
+    settlement_point = settlement_point or ""
+    horizon = horizon or ""
     cur = conn.execute(
         """INSERT INTO predictions
            (model, settlement_point, target_time, horizon, predicted_value, unit, metadata, generated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(model, settlement_point, target_time, horizon) DO UPDATE SET
+               predicted_value = excluded.predicted_value,
+               unit = excluded.unit,
+               metadata = excluded.metadata,
+               generated_at = excluded.generated_at""",
         (
             model,
             settlement_point,
@@ -127,7 +139,14 @@ def store_prediction(
         ),
     )
     conn.commit()
-    return cur.lastrowid
+    if cur.lastrowid:
+        return cur.lastrowid
+    row = conn.execute(
+        """SELECT id FROM predictions
+           WHERE model = ? AND settlement_point = ? AND target_time = ? AND horizon = ?""",
+        (model, settlement_point, target_time, horizon),
+    ).fetchone()
+    return row[0]
 
 
 def store_predictions_batch(
@@ -135,14 +154,32 @@ def store_predictions_batch(
     rows: List[tuple],
 ) -> int:
     """Insert multiple prediction rows. Each row is a tuple matching the INSERT columns."""
-    conn.executemany(
+    normalized_rows = [
+        (
+            model,
+            settlement_point or "",
+            target_time,
+            horizon or "",
+            predicted_value,
+            unit,
+            metadata,
+            generated_at,
+        )
+        for model, settlement_point, target_time, horizon, predicted_value, unit, metadata, generated_at in rows
+    ]
+    cur = conn.executemany(
         """INSERT INTO predictions
            (model, settlement_point, target_time, horizon, predicted_value, unit, metadata, generated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        rows,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(model, settlement_point, target_time, horizon) DO UPDATE SET
+               predicted_value = excluded.predicted_value,
+               unit = excluded.unit,
+               metadata = excluded.metadata,
+               generated_at = excluded.generated_at""",
+        normalized_rows,
     )
     conn.commit()
-    return len(rows)
+    return cur.rowcount
 
 
 def compute_accuracy(conn: sqlite3.Connection) -> int:
@@ -211,7 +248,6 @@ def run_rtm_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
             horizon = pred.get("horizon", "")
             hours_ahead = pred.get("hours_ahead", 0)
             target_time = now.replace(minute=0, second=0, microsecond=0)
-            from datetime import timedelta
             target_time = (target_time + timedelta(hours=hours_ahead)).isoformat()
             rows.append((
                 "rtm",
@@ -239,7 +275,6 @@ def run_spike_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int
             continue
         alert = data.get("alert", {})
         generated_at = data.get("generated_at", now.isoformat())
-        from datetime import timedelta
         target_time = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).isoformat()
         meta = {
             "is_spike": alert.get("is_spike"),
@@ -274,7 +309,7 @@ def run_wind_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
     rows = []
     for pred in data.get("predictions", []):
         hour_str = pred.get("hour_ending", "01:00")
-        target_time = f"{base_date}T{hour_str}:00+00:00"
+        target_time = _hour_ending_target_time(base_date, hour_str)
         meta = {
             "lower_bound_mw": pred.get("lower_bound_mw"),
             "upper_bound_mw": pred.get("upper_bound_mw"),
@@ -306,7 +341,7 @@ def run_load_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
     rows = []
     for pred in data.get("predictions", []):
         hour_str = pred.get("hour_ending", "01:00")
-        target_time = f"{base_date}T{hour_str}:00+00:00"
+        target_time = _hour_ending_target_time(base_date, hour_str)
         rows.append((
             "load",
             None,
@@ -336,7 +371,7 @@ def run_dam_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
         rows = []
         for pred in data.get("predictions", []):
             hour_str = pred.get("hour_ending", "01:00")
-            target_time = f"{delivery_date}T{hour_str}:00"
+            target_time = _hour_ending_target_time(delivery_date, hour_str)
             rows.append((
                 "dam",
                 sp,
@@ -368,7 +403,7 @@ def run(db_path: Path = DB_PATH, api_base: str = API_BASE) -> Dict[str, int]:
 
     now = datetime.now(timezone.utc)
     minute = now.minute
-    hour = now.hour
+    now_central = now.astimezone(CENTRAL_TZ)
     results: Dict[str, int] = {}
 
     conn = init_db(db_path)
@@ -386,8 +421,8 @@ def run(db_path: Path = DB_PATH, api_base: str = API_BASE) -> Dict[str, int]:
             results["wind"] = run_wind_predictions(client, conn)
             results["load"] = run_load_predictions(client, conn)
 
-        # Daily at 09:00 UTC (minute < 5): DAM next-day for all SPs
-        if hour == 9 and minute < 5:
+        # Daily at 09:00 CT (minute < 5): DAM next-day for all SPs
+        if now_central.hour == 9 and minute < 5:
             log.info("Running daily DAM next-day predictions...")
             results["dam"] = run_dam_predictions(client, conn)
 
@@ -404,6 +439,13 @@ def run(db_path: Path = DB_PATH, api_base: str = API_BASE) -> Dict[str, int]:
     total = sum(v for k, v in results.items() if k != "accuracy_matched")
     log.info("Run complete: %d predictions stored %s", total, results)
     return results
+
+def _hour_ending_target_time(delivery_date: str, hour_ending: str) -> str:
+    """Convert ERCOT hour-ending strings into valid ISO timestamps."""
+    delivery_dt = datetime.strptime(delivery_date, "%Y-%m-%d")
+    hour_component = int(hour_ending.split(":", 1)[0])
+    target_dt = delivery_dt + timedelta(hours=hour_component)
+    return target_dt.isoformat()
 
 
 if __name__ == "__main__":

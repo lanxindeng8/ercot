@@ -19,18 +19,13 @@ import pytest
 
 # Import sqlite_fetcher without triggering data/__init__.py (which pulls
 # in influxdb_client_3).
-import importlib.util as _ilu, sys as _sys, types as _types
-
-for _pkg in ("prediction", "prediction.src", "prediction.src.data"):
-    if _pkg not in _sys.modules:
-        _sys.modules[_pkg] = _types.ModuleType(_pkg)
+import importlib.util as _ilu
 
 _spec = _ilu.spec_from_file_location(
-    "prediction.src.data.sqlite_fetcher",
+    "sqlite_fetcher_test_module",
     str(Path(__file__).resolve().parents[1] / "src" / "data" / "sqlite_fetcher.py"),
 )
 _sf = _ilu.module_from_spec(_spec)
-_sys.modules[_spec.name] = _sf
 _spec.loader.exec_module(_sf)
 
 SQLiteFetcher = _sf.SQLiteFetcher
@@ -174,6 +169,8 @@ class TestFetchRTM:
 
         assert df.index.name == "timestamp"
         assert "rtm_price" in df.columns
+        assert "hour" in df.columns
+        assert "date" in df.columns
 
     def test_aggregates_to_hourly(self, test_db):
         fetcher = SQLiteFetcher(db_path=test_db)
@@ -208,6 +205,12 @@ class TestMetadata:
         assert min_dt is not None
         assert max_dt is not None
         assert min_dt <= max_dt
+
+    def test_rejects_unknown_measurement(self, test_db):
+        fetcher = SQLiteFetcher(db_path=test_db)
+        with pytest.raises(ValueError):
+            fetcher.get_available_settlement_points("dam_lmp; DROP TABLE dam_lmp_hist;--")
+        fetcher.close()
 
 
 class TestCloseIdempotent:

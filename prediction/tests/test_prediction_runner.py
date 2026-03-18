@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from run_predictions import (
+    _hour_ending_target_time,
     init_db,
     store_prediction,
     store_predictions_batch,
@@ -123,6 +124,35 @@ class TestStorePrediction:
         assert count == 3
         total = db_conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
         assert total == 3
+
+    def test_upserts_existing_prediction(self, db_conn):
+        first_id = store_prediction(
+            db_conn,
+            model="rtm",
+            settlement_point="HB_WEST",
+            target_time="2026-03-18T15:00:00+00:00",
+            predicted_value=42.50,
+            unit="USD/MWh",
+            horizon="1h",
+            generated_at="2026-03-18T14:00:00+00:00",
+        )
+        second_id = store_prediction(
+            db_conn,
+            model="rtm",
+            settlement_point="HB_WEST",
+            target_time="2026-03-18T15:00:00+00:00",
+            predicted_value=43.25,
+            unit="USD/MWh",
+            horizon="1h",
+            generated_at="2026-03-18T14:05:00+00:00",
+        )
+
+        row = db_conn.execute(
+            "SELECT id, predicted_value, generated_at FROM predictions WHERE model = 'rtm'"
+        ).fetchone()
+        assert row[0] == first_id == second_id
+        assert row[1] == 43.25
+        assert row[2] == "2026-03-18T14:05:00+00:00"
 
 
 class TestComputeAccuracy:
@@ -296,6 +326,11 @@ class TestRunDAMPredictions:
         conn.close()
 
 
+class TestHourEndingConversion:
+    def test_rolls_he24_to_next_day_midnight(self):
+        assert _hour_ending_target_time("2026-03-19", "24:00") == "2026-03-20T00:00:00"
+
+
 # ---------------------------------------------------------------------------
 # Integration: run() scheduler
 # ---------------------------------------------------------------------------
@@ -348,8 +383,8 @@ class TestRunScheduler:
 
     @patch("run_predictions.datetime")
     def test_daily_dam_run(self, mock_dt, db_path):
-        """09:00 UTC run should trigger DAM predictions."""
-        mock_dt.now.return_value = datetime(2026, 3, 18, 9, 0, 0, tzinfo=timezone.utc)
+        """09:00 CT run should trigger DAM predictions."""
+        mock_dt.now.return_value = datetime(2026, 3, 18, 14, 0, 0, tzinfo=timezone.utc)
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
         with patch("run_predictions.httpx.Client") as MockClient:
@@ -364,3 +399,21 @@ class TestRunScheduler:
 
         call_urls = [call.args[0] for call in mock_client.get.call_args_list]
         assert any("/predictions/dam" in u for u in call_urls)
+
+    @patch("run_predictions.datetime")
+    def test_nine_utc_no_longer_triggers_dam_outside_central_9am(self, mock_dt, db_path):
+        mock_dt.now.return_value = datetime(2026, 3, 18, 9, 0, 0, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+
+        with patch("run_predictions.httpx.Client") as MockClient:
+            mock_client = MagicMock()
+            resp = MagicMock()
+            resp.json.return_value = {"status": "error"}
+            resp.raise_for_status.return_value = None
+            mock_client.get.return_value = resp
+            MockClient.return_value = mock_client
+
+            run(db_path=db_path, api_base="http://127.0.0.1:8011")
+
+        call_urls = [call.args[0] for call in mock_client.get.call_args_list]
+        assert not any("/predictions/dam" in u for u in call_urls)

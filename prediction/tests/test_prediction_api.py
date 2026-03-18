@@ -86,6 +86,69 @@ class TestFeatureFetching:
         assert not features.empty
         assert fake_fetcher.closed is True
 
+    def test_try_sqlite_features_rejects_stale_rtm_data(self, monkeypatch):
+        stale_index = pd.date_range("2025-01-01 00:00:00", periods=48, freq="h")
+        fresh_index = pd.date_range("2026-03-17 00:00:00", periods=48, freq="h")
+
+        stale_rtm = pd.DataFrame(
+            {"rtm_price": range(48), "hour": range(1, 49), "date": stale_index.date},
+            index=stale_index,
+        )
+        stale_rtm.index.name = "timestamp"
+
+        dam_frame = pd.DataFrame(
+            {"dam_price": range(48), "hour": range(1, 49), "date": fresh_index.date},
+            index=fresh_index,
+        )
+        dam_frame.index.name = "timestamp"
+
+        class FakeFetcher:
+            def fetch_dam_prices(self, settlement_point, start_date):
+                return dam_frame
+
+            def fetch_rtm_prices(self, settlement_point, start_date):
+                return stale_rtm
+
+            def close(self):
+                pass
+
+        monkeypatch.setitem(
+            sys.modules,
+            "prediction.src.data.sqlite_fetcher",
+            types.SimpleNamespace(create_sqlite_fetcher=lambda: FakeFetcher()),
+        )
+
+        assert main._try_sqlite_features("HB_WEST") is None
+
+    def test_raw_to_hourly_preserves_sqlite_local_hours(self):
+        dam_index = pd.to_datetime(["2025-01-01 06:00:00", "2025-01-01 07:00:00"])
+        dam_raw = pd.DataFrame(
+            {
+                "dam_price": [25.0, 30.0],
+                "hour": [1, 2],
+                "date": [pd.Timestamp("2025-01-01").date(), pd.Timestamp("2025-01-01").date()],
+            },
+            index=dam_index,
+        )
+        dam_raw.index.name = "timestamp"
+
+        rtm_index = pd.to_datetime(["2025-01-01 06:00:00", "2025-01-01 07:00:00"])
+        rtm_raw = pd.DataFrame(
+            {
+                "rtm_price": [15.0, 17.0],
+                "hour": [1, 2],
+                "date": [pd.Timestamp("2025-01-01").date(), pd.Timestamp("2025-01-01").date()],
+            },
+            index=rtm_index,
+        )
+        rtm_raw.index.name = "timestamp"
+
+        dam_hourly, rtm_hourly = main._raw_to_hourly(dam_raw, rtm_raw)
+
+        assert dam_hourly["hour_ending"].tolist() == [1, 2]
+        assert rtm_hourly["hour_ending"].tolist() == [1, 2]
+        assert dam_hourly["delivery_date"].tolist() == ["2025-01-01", "2025-01-01"]
+
 
 class TestEndpoints:
     def test_predict_spike_returns_latest_alert(self, monkeypatch):
