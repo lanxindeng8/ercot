@@ -30,6 +30,8 @@ from .models.spike_predictor import get_spike_predictor
 from .models.wind_predictor import get_wind_predictor
 from .models.load_predictor import get_load_predictor
 from .models.bess_predictor import get_bess_predictor
+from .dispatch.mining_dispatch import compute_dispatch, load_config as load_dispatch_config
+from .dispatch.alert_service import get_alert_service
 from .features.unified_features import compute_features
 
 import sqlite3
@@ -1239,6 +1241,173 @@ def _parse_horizons(horizons: Optional[str]) -> Optional[List[str]]:
             ordered.append(horizon)
             seen.add(horizon)
     return ordered
+
+
+# ---------------------------------------------------------------------------
+# Mining Dispatch
+# ---------------------------------------------------------------------------
+
+@app.get("/dispatch/mining/schedule", tags=["Dispatch"])
+async def dispatch_mining_schedule(
+    settlement_point: str = Query(default="HB_WEST", description="Settlement point for DAM prices"),
+):
+    """
+    Today's mining ON/OFF dispatch schedule.
+
+    Combines DAM predictions, spike alerts, and BESS schedule to compute
+    optimal hours to run or curtail mining operations.
+    """
+    normalized_sp = _normalize_settlement_point(settlement_point)
+
+    dam_predictor = get_dam_v2_predictor()
+    if not dam_predictor.is_ready():
+        raise HTTPException(status_code=503, detail="DAM models not loaded")
+    if normalized_sp.lower() not in dam_predictor.available_settlement_points():
+        raise HTTPException(
+            status_code=400,
+            detail=f"No DAM model for '{settlement_point}'. Available: {dam_predictor.available_settlement_points()}",
+        )
+
+    try:
+        features_df = _fetch_and_compute_features(normalized_sp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Data pipeline failed: {e}")
+
+    target_rows = _latest_complete_delivery_rows(features_df)
+    if target_rows.empty:
+        raise HTTPException(status_code=404, detail="Insufficient data for dispatch")
+
+    try:
+        sp_key = normalized_sp.lower()
+
+        # DAM predictions
+        dam_predictions = dam_predictor.predict(target_rows, sp_key)
+        dam_prices = [
+            {"hour_ending": p.hour_ending, "predicted_price": p.predicted_price}
+            for p in dam_predictions[:24]
+        ]
+
+        # Spike alerts (best-effort)
+        spike_alerts = None
+        try:
+            spike_pred = get_spike_predictor()
+            if spike_pred.is_ready():
+                alerts = spike_pred.predict(target_rows, sp_key)
+                spike_alerts = [
+                    {
+                        "hour_ending": i + 1,
+                        "spike_probability": a.spike_probability,
+                        "is_spike": a.is_spike,
+                    }
+                    for i, a in enumerate(alerts)
+                ]
+        except Exception as exc:
+            log.warning("Spike predictor unavailable for dispatch: %s", exc)
+
+        # BESS schedule (best-effort)
+        bess_schedule = None
+        try:
+            bess = get_bess_predictor()
+            if bess.is_ready():
+                bess_prices = [p["predicted_price"] for p in dam_prices]
+                if len(bess_prices) == 24:
+                    bess_result = bess.optimize(bess_prices)
+                    bess_schedule = [
+                        {"hour_ending": e.hour_ending, "action": e.action}
+                        for e in bess_result.schedule
+                    ]
+        except Exception as exc:
+            log.warning("BESS optimizer unavailable for dispatch: %s", exc)
+
+        config = load_dispatch_config()
+        config.setdefault("mining", {})["settlement_point"] = normalized_sp
+        schedule = compute_dispatch(dam_prices, spike_alerts, bess_schedule, config)
+
+        return {
+            "status": "success",
+            "settlement_point": normalized_sp,
+            "generated_at": schedule.generated_at,
+            "date": schedule.date,
+            "schedule": [
+                {
+                    "hour_ending": f"{ha.hour_ending:02d}:00",
+                    "dam_price": ha.dam_price,
+                    "action": ha.action,
+                    "reason": ha.reason,
+                    "spike_probability": ha.spike_probability,
+                    "bess_action": ha.bess_action,
+                }
+                for ha in schedule.hours
+            ],
+            "summary": {
+                "hours_to_run": schedule.hours_to_run,
+                "hours_to_curtail": schedule.hours_to_curtail,
+                "expected_cost_savings": schedule.expected_cost_savings,
+                "always_on_cost": schedule.always_on_cost,
+                "dispatch_cost": schedule.dispatch_cost,
+                "peak_price": schedule.peak_price,
+                "avg_on_price": schedule.avg_on_price,
+                "spike_hours": schedule.spike_hours,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/dispatch/mining/savings", tags=["Dispatch"])
+async def dispatch_mining_savings(
+    settlement_point: str = Query(default="HB_WEST", description="Settlement point"),
+):
+    """
+    Estimated savings from dispatch vs always-on mining.
+
+    Returns cost comparison and savings breakdown.
+    """
+    result = await dispatch_mining_schedule(settlement_point)
+    summary = result["summary"]
+    return {
+        "status": "success",
+        "settlement_point": result["settlement_point"],
+        "date": result["date"],
+        "always_on_cost": summary["always_on_cost"],
+        "dispatch_cost": summary["dispatch_cost"],
+        "expected_cost_savings": summary["expected_cost_savings"],
+        "hours_to_run": summary["hours_to_run"],
+        "hours_to_curtail": summary["hours_to_curtail"],
+        "peak_price": summary["peak_price"],
+        "avg_on_price": summary["avg_on_price"],
+        "savings_pct": round(
+            summary["expected_cost_savings"] / summary["always_on_cost"] * 100, 1
+        ) if summary["always_on_cost"] > 0 else 0.0,
+    }
+
+
+class AlertConfigRequest(BaseModel):
+    chat_ids: Optional[List[str]] = None
+    spike_alert_threshold: Optional[float] = None
+    spike_cooldown_minutes: Optional[int] = None
+    bot_token: Optional[str] = None
+
+
+@app.post("/dispatch/alerts/config", tags=["Dispatch"])
+async def configure_alerts(req: AlertConfigRequest):
+    """
+    Configure alert preferences for the Telegram alert service.
+
+    Update chat IDs, spike thresholds, cooldown periods, or bot token.
+    """
+    svc = get_alert_service()
+    updated = svc.update_config(
+        chat_ids=req.chat_ids,
+        spike_alert_threshold=req.spike_alert_threshold,
+        spike_cooldown_minutes=req.spike_cooldown_minutes,
+        bot_token=req.bot_token,
+    )
+    return {"status": "success", "config": updated}
 
 
 if __name__ == "__main__":

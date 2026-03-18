@@ -1,0 +1,36 @@
+# Mining Dispatch Configuration
+# Controls ON/OFF scheduling, alert thresholds, and Telegram integration.
+
+mining:
+  # Breakeven electricity cost ($/MWh) — curtail when price exceeds this
+  breakeven_price: 55.0
+  # Cost per ON/OFF switching cycle ($) — prevents excessive toggling
+  switching_cost: 40.0
+  # Minimum consecutive hours to stay OFF (avoids short curtailments)
+  min_curtail_hours: 2
+  # Force curtailment when spike probability exceeds this threshold
+  spike_curtail_threshold: 0.7
+  # Settlement point for dispatch decisions
+  settlement_point: HB_WEST
+  # Mining load in MW (used for savings calculations)
+  load_mw: 10.0
+
+bess:
+  # Coordinate with BESS: avoid mining during BESS discharge (high-price) hours
+  coordinate: true
+
+alerts:
+  # Telegram Bot API token (reads from TELEGRAM_BOT_TOKEN env var if empty)
+  bot_token: ""
+  # Comma-separated chat IDs (reads from TELEGRAM_CHAT_IDS env var if empty)
+  chat_ids: ""
+  # Daily schedule alert time (CT)
+  schedule_time: "09:00"
+  # Daily PnL summary time (CT)
+  pnl_time: "22:00"
+  # Send urgent spike alerts within 1 min of detection
+  spike_alerts: true
+  # Minimum spike probability to trigger urgent alert
+  spike_alert_threshold: 0.7
+  # Cooldown between spike alerts (minutes) — avoid spam
+  spike_cooldown_minutes: 30
