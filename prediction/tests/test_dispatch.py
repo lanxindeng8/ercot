@@ -250,6 +250,10 @@ class TestDispatchEndpoints:
         class FakeDAMPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def available_settlement_points(self):
                 return ["hb_west"]
@@ -260,6 +264,10 @@ class TestDispatchEndpoints:
         class FakeSpikePredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def predict(self, df, sp):
                 return [
@@ -270,6 +278,10 @@ class TestDispatchEndpoints:
         class FakeBESSPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def optimize(self, prices):
                 from prediction.src.models.bess_predictor import BessScheduleEntry, BessScheduleResult

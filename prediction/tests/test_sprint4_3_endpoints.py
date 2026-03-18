@@ -26,6 +26,10 @@ class TestWindEndpoint:
         class FakeWindPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             @property
             def metadata(self):
@@ -67,6 +71,10 @@ class TestWindEndpoint:
         class FakeWindPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def get_model_info(self):
                 return {
@@ -92,6 +100,10 @@ class TestLoadEndpoint:
         class FakeLoadPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def predict(self, features_df):
                 return [
@@ -125,6 +137,10 @@ class TestLoadEndpoint:
         class FakeLoadPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def get_model_info(self):
                 return {
@@ -151,6 +167,10 @@ class TestBessEndpoint:
         class FakeDamPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def available_settlement_points(self):
                 return ["hb_west"]
@@ -171,6 +191,10 @@ class TestBessEndpoint:
         class FakeBessPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def optimize(self, dam_prices):
                 schedule = [
@@ -233,6 +257,10 @@ class TestBessEndpoint:
         class FakeDamPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def available_settlement_points(self):
                 return ["hb_west"]
@@ -252,6 +280,10 @@ class TestBessEndpoint:
         class FakeBessPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def get_model_info(self):
                 return {
@@ -270,6 +302,10 @@ class TestBessEndpoint:
         class FakeDamPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def available_settlement_points(self):
                 return ["hb_west"]
@@ -277,12 +313,16 @@ class TestBessEndpoint:
         class FakeBessPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
         monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
         monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_bess(settlement_point="HB_NORTH"))
+            asyncio.run(main.predict_bess(settlement_point="FAKE_NODE"))
         assert exc.value.status_code == 400
 
 
@@ -296,6 +336,10 @@ class TestHealthWithNewModels:
         class FakePredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def get_model_info(self):
                 return {

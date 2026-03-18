@@ -394,6 +394,10 @@ class TestBessDispatchEndpoints:
         class FakeDAMPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return sp.lower() in ["hb_west"]
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
             def available_settlement_points(self):
                 return ["hb_west"]
             def predict(self, df, sp):
@@ -402,6 +406,10 @@ class TestBessDispatchEndpoints:
         class FakeSpikePredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
             def predict(self, df, sp):
                 return [
                     FakeSpikeAlert(0.1, False, "low", 100.0, "HB_WEST", "")
@@ -411,6 +419,10 @@ class TestBessDispatchEndpoints:
         class FakeBESSPredictor:
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
             def optimize(self, prices):
                 sched = []
                 for h in range(24):

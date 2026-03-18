@@ -27,8 +27,8 @@ def _market_frame(column: str) -> pd.DataFrame:
 
 
 class TestValidationHelpers:
-    def test_normalize_settlement_point_maps_load_zone_to_hub(self):
-        assert main._normalize_settlement_point("lz_west") == "HB_WEST"
+    def test_normalize_settlement_point_preserves_load_zone(self):
+        assert main._normalize_settlement_point("lz_west") == "LZ_WEST"
 
     def test_normalize_settlement_point_rejects_unsupported_values(self):
         with pytest.raises(HTTPException) as exc:
@@ -166,6 +166,10 @@ class TestEndpoints:
 
             def is_ready(self):
                 return True
+            def has_model(self, sp):
+                return True
+            def missing_model_message(self, sp):
+                return f"No model for {sp}"
 
             def available_settlement_points(self):
                 return ["hb_west"]
@@ -187,11 +191,11 @@ class TestEndpoints:
 
         result = asyncio.run(main.predict_spike("LZ_WEST"))
 
-        assert result["settlement_point"] == "HB_WEST"
+        assert result["settlement_point"] == "LZ_WEST"
         assert result["alert"]["spike_probability"] == 0.9
         assert result["alert"]["is_spike"] is True
         assert predictor.features_df is feature_frame
-        assert predictor.settlement_point == "hb_west"
+        assert predictor.settlement_point == "lz_west"
 
     def test_predict_delta_spread_requires_loaded_models(self, monkeypatch):
         class FakePredictor:
