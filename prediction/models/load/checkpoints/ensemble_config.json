@@ -1,0 +1,14 @@
+{
+  "type": "catboost_lightgbm_ensemble",
+  "n_models": 2,
+  "components": [
+    "load_catboost",
+    "load_lightgbm"
+  ],
+  "test_metrics": {
+    "mae": 115.75355073323361,
+    "rmse": 205.55848468392006,
+    "mape": 0.8127548337876082
+  },
+  "timestamp": "2026-03-18T08:34:05.306749"
+}

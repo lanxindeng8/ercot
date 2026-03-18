@@ -1,0 +1,62 @@
+{
+  "model_name": "load_lightgbm",
+  "timestamp": "2026-03-18T08:34:05.278787",
+  "metrics": {
+    "val": {
+      "mae": 167.51833019111555,
+      "rmse": 322.9195414193018,
+      "mape": 1.0635599730909555
+    },
+    "test": {
+      "mae": 125.46527380960643,
+      "rmse": 220.97505528135366,
+      "mape": 0.8804137480301425
+    }
+  },
+  "feature_count": 34,
+  "features": [
+    "hour_of_day",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "is_peak_hour",
+    "season",
+    "is_holiday",
+    "load_lag_1h",
+    "load_lag_2h",
+    "load_lag_3h",
+    "load_lag_6h",
+    "load_lag_12h",
+    "load_lag_24h",
+    "load_lag_48h",
+    "load_lag_168h",
+    "load_roll_6h_mean",
+    "load_roll_6h_std",
+    "load_roll_6h_min",
+    "load_roll_6h_max",
+    "load_roll_12h_mean",
+    "load_roll_12h_std",
+    "load_roll_12h_min",
+    "load_roll_12h_max",
+    "load_roll_24h_mean",
+    "load_roll_24h_std",
+    "load_roll_24h_min",
+    "load_roll_24h_max",
+    "load_roll_168h_mean",
+    "load_roll_168h_std",
+    "load_roll_168h_min",
+    "load_roll_168h_max",
+    "load_change_1h",
+    "load_change_24h",
+    "load_roc_1h"
+  ],
+  "categorical_features": [
+    "hour_of_day",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "is_peak_hour",
+    "season",
+    "is_holiday"
+  ]
+}
