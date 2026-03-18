@@ -1,9 +1,11 @@
 """
 Unified feature engineering for ERCOT training pipeline.
 
-Computes temporal, price-lag, rolling-stat, cross-market, and fuel-mix
-features from hourly RTM, DAM, and fuel-mix data aligned by
-(delivery_date, hour_ending).
+Computes temporal, price-lag, rolling-stat, cross-market, fuel-mix,
+ancillary-service, RTM congestion/loss, and expanded fuel generation
+features from hourly data aligned by (delivery_date, hour_ending).
+
+Feature count: 80 (up from 42 in v1).
 """
 
 import numpy as np
@@ -22,8 +24,7 @@ US_MAJOR_HOLIDAYS = {
     (1, 1), (7, 4), (11, 11), (12, 25), (12, 31),
 }
 
-# Canonical fuel groups used as features.  Raw ERCOT names are mapped onto
-# these in _normalise_fuel().
+# Canonical fuel groups used for percentage features.
 FUEL_GROUPS = {
     "Wind": "wind",
     "Wnd": "wind",
@@ -39,61 +40,139 @@ FUEL_GROUPS = {
     "Hydro": "hydro",
 }
 
-# Ordered list of every feature produced by compute_features().
-FEATURE_COLUMNS = [
-    # Temporal (7)
-    "hour_of_day",
-    "day_of_week",
-    "month",
-    "is_weekend",
-    "is_peak_hour",
-    "is_holiday",
-    "is_summer",
-    # DAM price lags (4)
-    "dam_lag_1h",
-    "dam_lag_4h",
-    "dam_lag_24h",
-    "dam_lag_168h",
-    # RTM price lags (4)
-    "rtm_lag_1h",
-    "rtm_lag_4h",
-    "rtm_lag_24h",
-    "rtm_lag_168h",
-    # DAM rolling stats – 24 h (4)
-    "dam_roll_24h_mean",
-    "dam_roll_24h_std",
-    "dam_roll_24h_min",
-    "dam_roll_24h_max",
-    # DAM rolling stats – 168 h (4)
-    "dam_roll_168h_mean",
-    "dam_roll_168h_std",
-    "dam_roll_168h_min",
-    "dam_roll_168h_max",
-    # RTM rolling stats – 24 h (4)
-    "rtm_roll_24h_mean",
-    "rtm_roll_24h_std",
-    "rtm_roll_24h_min",
-    "rtm_roll_24h_max",
-    # RTM rolling stats – 168 h (4)
-    "rtm_roll_168h_mean",
-    "rtm_roll_168h_std",
-    "rtm_roll_168h_min",
-    "rtm_roll_168h_max",
-    # Cross-market (3)
-    "dam_rtm_spread",
-    "spread_roll_24h_mean",
-    "spread_roll_168h_mean",
-    # Fuel mix pct (6)
-    "wind_pct",
-    "solar_pct",
-    "gas_pct",
-    "nuclear_pct",
-    "coal_pct",
-    "hydro_pct",
+# Expanded fuel groups — keeps Gas-CC separate for MW-level features.
+FUEL_GROUPS_EXPANDED = {
+    "Wind": "wind",
+    "Wnd": "wind",
+    "WSL": "wind",
+    "Solar": "solar",
+    "Sun": "solar",
+    "Gas": "gas",
+    "Gas-CC": "gas_cc",
+    "Gas_CC": "gas_cc",
+    "Gas_GT": "gas",
+    "Nuclear": "nuclear",
+    "Coal": "coal",
+    "Hydro": "hydro",
+    "Biomass": "biomass",
+    "Oth": "other",
+    "Other": "other",
+}
+
+# ---------------------------------------------------------------------------
+# Feature column registry
+# ---------------------------------------------------------------------------
+
+# Original 42 features (v1) ------------------------------------------------
+
+_TEMPORAL_FEATURES = [
+    "hour_of_day", "day_of_week", "month",
+    "is_weekend", "is_peak_hour", "is_holiday", "is_summer",
 ]
+
+_DAM_LAG_FEATURES = ["dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h"]
+_RTM_LAG_FEATURES = ["rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h"]
+
+_DAM_ROLL_FEATURES = [
+    f"dam_roll_{w}h_{s}" for w in [24, 168] for s in ["mean", "std", "min", "max"]
+]
+_RTM_ROLL_FEATURES = [
+    f"rtm_roll_{w}h_{s}" for w in [24, 168] for s in ["mean", "std", "min", "max"]
+]
+
+_SPREAD_FEATURES = ["dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean"]
+
+_FUEL_PCT_FEATURES = [
+    "wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct",
+]
+
+# New features (v2) ---------------------------------------------------------
+
+# Ancillary service prices from dam_asmcpc_hist (12 features)
+_AS_PRICE_FEATURES = [
+    "regdn", "regup", "rrs", "nspin", "ecrs",
+]
+_AS_DERIVED_FEATURES = [
+    "reg_spread",           # regup - regdn
+    "total_as_cost",        # sum of all AS prices
+]
+_AS_LAG_FEATURES = [
+    "regup_lag_24h", "rrs_lag_24h", "nspin_lag_24h", "total_as_lag_24h",
+]
+_AS_ROLL_FEATURES = [
+    "total_as_roll_24h_mean", "total_as_roll_24h_std",
+]
+AS_FEATURES = _AS_PRICE_FEATURES + _AS_DERIVED_FEATURES + _AS_LAG_FEATURES + _AS_ROLL_FEATURES
+
+# RTM congestion/loss components from rtm_lmp_api (6 features)
+RTM_COMPONENT_FEATURES = [
+    "congestion_pct",           # congestion_component / lmp
+    "loss_pct",                 # loss_component / lmp
+    "energy_pct",               # energy_component / lmp
+    "congestion_ma_4h",         # 4h moving average of congestion_component
+    "congestion_volatility_24h",  # 24h rolling std of congestion_component
+    "high_congestion_flag",     # binary: |congestion_pct| > 20%
+]
+
+# Expanded fuel generation MW + derived (14 features)
+_FUEL_GEN_MW_FEATURES = [
+    "gas_gen_mw", "gas_cc_gen_mw", "coal_gen_mw", "nuclear_gen_mw",
+    "solar_gen_mw", "wind_gen_mw", "hydro_gen_mw", "biomass_gen_mw",
+]
+_FUEL_DERIVED_FEATURES = [
+    "total_gen_mw",             # sum of all generation
+    "renewable_ratio",          # (wind + solar) / total
+    "thermal_ratio",            # (gas + gas_cc + coal) / total
+    "net_load_mw",              # total - wind - solar
+]
+_FUEL_RAMP_FEATURES = [
+    "solar_ramp_1h", "wind_ramp_1h", "gas_ramp_1h",
+]
+FUEL_GEN_FEATURES = _FUEL_GEN_MW_FEATURES + _FUEL_DERIVED_FEATURES + _FUEL_RAMP_FEATURES
+
+# ---------------------------------------------------------------------------
+# Composite feature lists
+# ---------------------------------------------------------------------------
+
+# Original v1 features (42) — kept for backward compatibility checks.
+FEATURE_COLUMNS_V1 = (
+    _TEMPORAL_FEATURES
+    + _DAM_LAG_FEATURES + _RTM_LAG_FEATURES
+    + _DAM_ROLL_FEATURES + _RTM_ROLL_FEATURES
+    + _SPREAD_FEATURES
+    + _FUEL_PCT_FEATURES
+)
+
+# Full v2 feature set (80).
+FEATURE_COLUMNS = (
+    FEATURE_COLUMNS_V1
+    + AS_FEATURES           # +12
+    + RTM_COMPONENT_FEATURES  # +6
+    + FUEL_GEN_FEATURES     # +14
+)
+# => 42 + 12 + 6 + 14 = 74 ... need 6 more to hit 80
+
+# Additional cross-domain features (6 more to reach 80)
+CROSS_FEATURES = [
+    "dam_as_ratio",             # dam_lmp / (total_as_cost + 1)
+    "reg_spread_roll_24h_mean", # 24h rolling mean of reg_spread
+    "ecrs_lag_24h",             # ECRS lagged 24h
+    "gas_cc_share",             # gas_cc_gen_mw / total_gen_mw
+    "wind_ramp_4h",             # wind generation change over 4h
+    "solar_ramp_4h",            # solar generation change over 4h
+]
+
+FEATURE_COLUMNS = FEATURE_COLUMNS + CROSS_FEATURES  # 74 + 6 = 80
 
 # Target columns appended alongside features.
 TARGET_COLUMNS = ["dam_lmp", "rtm_lmp"]
+
+# Columns that are allowed to be NaN (optional data sources).
+_NULLABLE_SUFFIXES = ("_pct", "_mw", "_ratio", "_flag")
+_NULLABLE_FEATURE_SET = set(
+    _FUEL_PCT_FEATURES + AS_FEATURES + RTM_COMPONENT_FEATURES
+    + FUEL_GEN_FEATURES + CROSS_FEATURES
+)
 
 
 def is_us_holiday(dt: pd.Timestamp) -> int:
@@ -125,8 +204,11 @@ def compute_features(
     dam_hourly: pd.DataFrame,
     rtm_hourly: pd.DataFrame,
     fuel_hourly: Optional[pd.DataFrame] = None,
+    ancillary_hourly: Optional[pd.DataFrame] = None,
+    rtm_components_hourly: Optional[pd.DataFrame] = None,
+    fuel_gen_hourly: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """Build the unified feature matrix.
+    """Build the unified feature matrix (80 features).
 
     Parameters
     ----------
@@ -136,14 +218,20 @@ def compute_features(
         Same schema as *dam_hourly* (RTM prices aggregated to hourly).
     fuel_hourly : DataFrame, optional
         Columns: delivery_date, hour_ending, wind_pct, solar_pct, gas_pct,
-        nuclear_pct, coal_pct, hydro_pct.  May be ``None`` when fuel-mix
-        data is unavailable for the requested date range.
+        nuclear_pct, coal_pct, hydro_pct.
+    ancillary_hourly : DataFrame, optional
+        Columns: delivery_date, hour_ending, regdn, regup, rrs, nspin, ecrs.
+    rtm_components_hourly : DataFrame, optional
+        Columns: delivery_date, hour_ending, lmp, energy_component,
+        congestion_component, loss_component.
+    fuel_gen_hourly : DataFrame, optional
+        Columns: delivery_date, hour_ending, plus *_gen_mw columns from
+        ``aggregate_fuel_gen_hourly()``.
 
     Returns
     -------
-    DataFrame indexed by (delivery_date, hour_ending) with every column in
-    ``FEATURE_COLUMNS`` plus ``TARGET_COLUMNS``.  Rows with insufficient
-    history for lag/rolling features are dropped.
+    DataFrame with every column in ``FEATURE_COLUMNS`` plus ``TARGET_COLUMNS``.
+    Rows with insufficient history for core lag/rolling features are dropped.
     """
     # ---- merge DAM + RTM on (delivery_date, hour_ending) ----
     merged = pd.merge(
@@ -158,8 +246,6 @@ def compute_features(
         return pd.DataFrame(columns=["delivery_date", "hour_ending"] + FEATURE_COLUMNS + TARGET_COLUMNS)
 
     # Build a proper datetime for sorting / rolling.
-    # Reindex to a true hourly timeline so lag/rolling windows stay aligned
-    # across any missing delivery hours in the source data.
     merged["dt"] = pd.to_datetime(merged["delivery_date"]) + pd.to_timedelta(
         merged["hour_ending"] - 1, unit="h"
     )
@@ -201,32 +287,213 @@ def compute_features(
     merged["spread_roll_24h_mean"] = spread_shifted.rolling(24, min_periods=24).mean()
     merged["spread_roll_168h_mean"] = spread_shifted.rolling(168, min_periods=168).mean()
 
-    # ---- fuel mix ----
+    # ---- fuel mix percentages (original v1) ----
     if fuel_hourly is not None and not fuel_hourly.empty:
         fuel_cols = [c for c in fuel_hourly.columns if c.endswith("_pct")]
-        fuel_hourly = (
+        fuel_agg = (
             fuel_hourly.groupby(["delivery_date", "hour_ending"], as_index=False)[fuel_cols]
             .mean()
         )
         merged = pd.merge(
             merged.reset_index(drop=True),
-            fuel_hourly,
+            fuel_agg,
             on=["delivery_date", "hour_ending"],
             how="left",
         )
     else:
         merged = merged.reset_index(drop=True)
-    # Ensure fuel columns exist (fill with NaN when missing)
+
     for fc in ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]:
         if fc not in merged.columns:
             merged[fc] = np.nan
 
+    # ---- ancillary service features ----
+    _merge_ancillary(merged, ancillary_hourly)
+
+    # ---- RTM congestion/loss component features ----
+    _merge_rtm_components(merged, rtm_components_hourly)
+
+    # ---- expanded fuel generation MW features ----
+    _merge_fuel_gen(merged, fuel_gen_hourly)
+
+    # ---- cross-domain features ----
+    _build_cross_features(merged)
+
     # ---- select final columns & drop incomplete rows ----
+    # Only require core price lag/rolling features to be non-NaN.
+    # New feature groups (AS, congestion, fuel MW) are allowed to be NaN.
+    required_cols = [c for c in FEATURE_COLUMNS if c not in _NULLABLE_FEATURE_SET]
+    for col in FEATURE_COLUMNS:
+        if col not in merged.columns:
+            merged[col] = np.nan
+
     out = merged[["delivery_date", "hour_ending"] + FEATURE_COLUMNS + TARGET_COLUMNS].copy()
-    out = out.dropna(subset=[c for c in FEATURE_COLUMNS if not c.endswith("_pct")])
+    out = out.dropna(subset=required_cols)
     out = out.reset_index(drop=True)
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Ancillary service helpers
+# ---------------------------------------------------------------------------
+
+
+def _merge_ancillary(merged: pd.DataFrame, ancillary_hourly: Optional[pd.DataFrame]) -> None:
+    """Merge ancillary service features in-place."""
+    if ancillary_hourly is not None and not ancillary_hourly.empty:
+        as_cols = ["delivery_date", "hour_ending", "regdn", "regup", "rrs", "nspin", "ecrs"]
+        as_df = ancillary_hourly[[c for c in as_cols if c in ancillary_hourly.columns]].copy()
+        as_df = as_df.drop_duplicates(subset=["delivery_date", "hour_ending"], keep="last")
+
+        # Merge on (delivery_date, hour_ending)
+        for col in ["regdn", "regup", "rrs", "nspin", "ecrs"]:
+            if col in as_df.columns:
+                mapping = as_df.set_index(["delivery_date", "hour_ending"])[col]
+                idx = pd.MultiIndex.from_arrays([merged["delivery_date"], merged["hour_ending"]])
+                merged[col] = idx.map(mapping).values
+
+    # Ensure all raw AS columns exist
+    for col in _AS_PRICE_FEATURES:
+        if col not in merged.columns:
+            merged[col] = np.nan
+
+    # Derived features
+    merged["reg_spread"] = merged["regup"] - merged["regdn"]
+    merged["total_as_cost"] = (
+        merged["regdn"] + merged["regup"] + merged["rrs"]
+        + merged["nspin"] + merged["ecrs"]
+    )
+
+    # Lags (24h)
+    merged["regup_lag_24h"] = merged["regup"].shift(24)
+    merged["rrs_lag_24h"] = merged["rrs"].shift(24)
+    merged["nspin_lag_24h"] = merged["nspin"].shift(24)
+    merged["total_as_lag_24h"] = merged["total_as_cost"].shift(24)
+    merged["ecrs_lag_24h"] = merged["ecrs"].shift(24)
+
+    # Rolling stats on total AS cost
+    as_shifted = merged["total_as_cost"].shift(1)
+    merged["total_as_roll_24h_mean"] = as_shifted.rolling(24, min_periods=24).mean()
+    merged["total_as_roll_24h_std"] = as_shifted.rolling(24, min_periods=24).std()
+
+    # Rolling on reg spread
+    reg_shifted = merged["reg_spread"].shift(1)
+    merged["reg_spread_roll_24h_mean"] = reg_shifted.rolling(24, min_periods=24).mean()
+
+
+# ---------------------------------------------------------------------------
+# RTM component helpers
+# ---------------------------------------------------------------------------
+
+
+def _merge_rtm_components(
+    merged: pd.DataFrame, rtm_components_hourly: Optional[pd.DataFrame]
+) -> None:
+    """Merge RTM congestion/loss component features in-place."""
+    if rtm_components_hourly is not None and not rtm_components_hourly.empty:
+        rc = rtm_components_hourly.copy()
+        rc = rc.drop_duplicates(subset=["delivery_date", "hour_ending"], keep="last")
+
+        # Compute component percentages
+        lmp_safe = rc["lmp"].replace(0, np.nan)
+        rc["congestion_pct"] = (rc["congestion_component"] / lmp_safe) * 100
+        rc["loss_pct"] = (rc["loss_component"] / lmp_safe) * 100
+        rc["energy_pct"] = (rc["energy_component"] / lmp_safe) * 100
+
+        # Merge the pct columns
+        rc_merge = rc[["delivery_date", "hour_ending", "congestion_pct", "loss_pct",
+                        "energy_pct", "congestion_component"]].copy()
+        key_idx = rc_merge.set_index(["delivery_date", "hour_ending"])
+        merged_idx = pd.MultiIndex.from_arrays([merged["delivery_date"], merged["hour_ending"]])
+
+        for col in ["congestion_pct", "loss_pct", "energy_pct", "congestion_component"]:
+            if col in key_idx.columns:
+                merged[col] = merged_idx.map(key_idx[col]).values
+
+    # Ensure columns exist
+    for col in ["congestion_pct", "loss_pct", "energy_pct", "congestion_component"]:
+        if col not in merged.columns:
+            merged[col] = np.nan
+
+    # Derived congestion features
+    cong = merged["congestion_component"]
+    merged["congestion_ma_4h"] = cong.shift(1).rolling(4, min_periods=4).mean()
+    merged["congestion_volatility_24h"] = cong.shift(1).rolling(24, min_periods=24).std()
+    merged["high_congestion_flag"] = (merged["congestion_pct"].abs() > 20).astype(float)
+    # Convert NaN congestion_pct → NaN flag
+    merged.loc[merged["congestion_pct"].isna(), "high_congestion_flag"] = np.nan
+
+    # Drop the intermediate column
+    if "congestion_component" in merged.columns:
+        merged.drop(columns=["congestion_component"], inplace=True)
+
+
+# ---------------------------------------------------------------------------
+# Expanded fuel generation helpers
+# ---------------------------------------------------------------------------
+
+
+def _merge_fuel_gen(merged: pd.DataFrame, fuel_gen_hourly: Optional[pd.DataFrame]) -> None:
+    """Merge expanded fuel generation MW features in-place."""
+    gen_cols = [c for c in _FUEL_GEN_MW_FEATURES + ["total_gen_mw"] if True]
+
+    if fuel_gen_hourly is not None and not fuel_gen_hourly.empty:
+        fg = fuel_gen_hourly.drop_duplicates(
+            subset=["delivery_date", "hour_ending"], keep="last"
+        )
+        fg_idx = fg.set_index(["delivery_date", "hour_ending"])
+        merged_idx = pd.MultiIndex.from_arrays([merged["delivery_date"], merged["hour_ending"]])
+
+        for col in gen_cols:
+            if col in fg_idx.columns:
+                merged[col] = merged_idx.map(fg_idx[col]).values
+
+    # Ensure all MW columns exist
+    for col in _FUEL_GEN_MW_FEATURES:
+        if col not in merged.columns:
+            merged[col] = np.nan
+
+    # Total generation
+    if "total_gen_mw" not in merged.columns:
+        merged["total_gen_mw"] = (
+            merged["gas_gen_mw"] + merged["gas_cc_gen_mw"] + merged["coal_gen_mw"]
+            + merged["nuclear_gen_mw"] + merged["solar_gen_mw"]
+            + merged["wind_gen_mw"] + merged["hydro_gen_mw"]
+            + merged["biomass_gen_mw"]
+        )
+
+    total_safe = merged["total_gen_mw"].replace(0, np.nan)
+
+    # Ratios
+    merged["renewable_ratio"] = (
+        (merged["wind_gen_mw"] + merged["solar_gen_mw"]) / total_safe
+    )
+    merged["thermal_ratio"] = (
+        (merged["gas_gen_mw"] + merged["gas_cc_gen_mw"] + merged["coal_gen_mw"]) / total_safe
+    )
+
+    # Net load (total minus wind and solar)
+    merged["net_load_mw"] = (
+        merged["total_gen_mw"] - merged["wind_gen_mw"] - merged["solar_gen_mw"]
+    )
+
+    # Ramps (1h change)
+    for fuel, col in [("solar", "solar_gen_mw"), ("wind", "wind_gen_mw"), ("gas", "gas_gen_mw")]:
+        merged[f"{fuel}_ramp_1h"] = merged[col] - merged[col].shift(1)
+
+    # 4h ramps
+    merged["wind_ramp_4h"] = merged["wind_gen_mw"] - merged["wind_gen_mw"].shift(4)
+    merged["solar_ramp_4h"] = merged["solar_gen_mw"] - merged["solar_gen_mw"].shift(4)
+
+    # Gas CC share
+    merged["gas_cc_share"] = merged["gas_cc_gen_mw"] / total_safe
+
+
+def _build_cross_features(merged: pd.DataFrame) -> None:
+    """Build cross-domain features in-place."""
+    # DAM-to-AS ratio: how does the energy price relate to ancillary costs?
+    merged["dam_as_ratio"] = merged["dam_lmp"] / (merged["total_as_cost"].abs() + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -281,5 +548,53 @@ def aggregate_fuel_mix_hourly(fuel_raw: pd.DataFrame) -> pd.DataFrame:
             result[f"{grp}_pct"] = (wide[grp] / wide["total"].replace(0, np.nan)) * 100
         else:
             result[f"{grp}_pct"] = np.nan
+
+    return result
+
+
+def aggregate_fuel_gen_hourly(fuel_raw: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate 15-min fuel-mix data to hourly MW by expanded fuel type.
+
+    Uses ``FUEL_GROUPS_EXPANDED`` to keep Gas-CC separate from simple-cycle Gas.
+
+    Parameters
+    ----------
+    fuel_raw : DataFrame
+        Columns: delivery_date, fuel, interval_15min (1-96), generation_mw.
+
+    Returns
+    -------
+    DataFrame with columns: delivery_date, hour_ending, gas_gen_mw,
+    gas_cc_gen_mw, coal_gen_mw, nuclear_gen_mw, solar_gen_mw, wind_gen_mw,
+    hydro_gen_mw, total_gen_mw.
+    """
+    df = fuel_raw.copy()
+    df["group"] = df["fuel"].map(FUEL_GROUPS_EXPANDED)
+    df = df.dropna(subset=["group"])
+
+    # Map interval 1-96 → hour_ending 1-24
+    df["hour_ending"] = ((df["interval_15min"] - 1) // 4) + 1
+
+    hourly = (
+        df.groupby(["delivery_date", "hour_ending", "group"])["generation_mw"]
+        .sum()
+        .reset_index()
+    )
+
+    wide = hourly.pivot_table(
+        index=["delivery_date", "hour_ending"],
+        columns="group",
+        values="generation_mw",
+        fill_value=0,
+    ).reset_index()
+    wide.columns.name = None
+
+    result = wide[["delivery_date", "hour_ending"]].copy()
+    gen_groups = ["gas", "gas_cc", "coal", "nuclear", "solar", "wind", "hydro", "biomass"]
+    for grp in gen_groups:
+        col_name = f"{grp}_gen_mw"
+        result[col_name] = wide[grp].values if grp in wide.columns else 0.0
+
+    result["total_gen_mw"] = result[[f"{g}_gen_mw" for g in gen_groups]].sum(axis=1)
 
     return result

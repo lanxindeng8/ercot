@@ -1,10 +1,10 @@
 """
 Unified Training Data Pipeline for ERCOT prediction models.
 
-Loads RTM, DAM, and fuel-mix history from the SQLite archive, computes
-unified features via ``prediction.src.features.unified_features``, splits
-by date into train / val / test, and exports per-settlement-point Parquet
-files.
+Loads RTM, DAM, fuel-mix, ancillary-service, and RTM-component history
+from the SQLite archive, computes unified features (80 total) via
+``prediction.src.features.unified_features``, splits by date into
+train / val / test, and exports per-settlement-point Parquet files.
 
 Usage
 -----
@@ -22,7 +22,9 @@ import pandas as pd
 
 from prediction.src.features.unified_features import (
     FEATURE_COLUMNS,
+    FEATURE_COLUMNS_V1,
     FUEL_GROUPS,
+    FUEL_GROUPS_EXPANDED,
     TARGET_COLUMNS,
     compute_features,
 )
@@ -40,20 +42,17 @@ TRAIN_END = "2024-01-01"  # train: < 2024
 VAL_END = "2025-01-01"    # val:   2024
                            # test:  >= 2025
 
+# Temporal features are int8; everything else is float32.
+_TEMPORAL_INT8 = {
+    "hour_ending", "hour_of_day", "day_of_week", "month",
+    "is_weekend", "is_peak_hour", "is_holiday", "is_summer",
+}
+
 FLOAT32_COLUMNS = [
-    *[c for c in FEATURE_COLUMNS if c not in {"hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour", "is_holiday", "is_summer"}],
+    *[c for c in FEATURE_COLUMNS if c not in _TEMPORAL_INT8],
     *TARGET_COLUMNS,
 ]
-INT8_COLUMNS = [
-    "hour_ending",
-    "hour_of_day",
-    "day_of_week",
-    "month",
-    "is_weekend",
-    "is_peak_hour",
-    "is_holiday",
-    "is_summer",
-]
+INT8_COLUMNS = list(_TEMPORAL_INT8)
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +238,169 @@ def load_fuel_mix_hourly(
 
 
 # ---------------------------------------------------------------------------
+# New data loaders (v2)
+# ---------------------------------------------------------------------------
+
+
+def load_ancillary_hourly(
+    db_path: Path,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load hourly ancillary service prices from *dam_asmcpc_hist*.
+
+    Returns DataFrame with columns: delivery_date, hour_ending,
+    regdn, regup, rrs, nspin, ecrs.
+    """
+    query = (
+        "SELECT delivery_date, hour_ending, "
+        "       regdn, regup, rrs, nspin, ecrs "
+        "FROM dam_asmcpc_hist "
+        "WHERE repeated_hour = 0"
+    )
+    params: list = []
+    if date_from:
+        query += " AND delivery_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND delivery_date < ?"
+        params.append(date_to)
+    query += " ORDER BY delivery_date, hour_ending"
+
+    with sqlite3.connect(db_path) as conn:
+        df = pd.read_sql_query(query, conn, params=params)
+
+    if df.empty:
+        return df
+
+    df["delivery_date"] = df["delivery_date"].astype("string")
+    df["hour_ending"] = df["hour_ending"].astype("int8")
+    for col in ["regdn", "regup", "rrs", "nspin", "ecrs"]:
+        df[col] = df[col].astype("float32")
+    return df
+
+
+def load_rtm_components_hourly(
+    db_path: Path,
+    settlement_point: str,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load hourly RTM price components from *rtm_lmp_api*.
+
+    Aggregates 5-minute data to hourly averages.
+
+    Returns DataFrame with columns: delivery_date, hour_ending,
+    lmp, energy_component, congestion_component, loss_component.
+
+    Note: rtm_lmp_api has limited historical coverage (~5 weeks as of
+    March 2026). Features will be NaN for dates outside its range.
+    """
+    query = (
+        "SELECT DATE(time) AS delivery_date, "
+        "       CAST(strftime('%H', time) AS INTEGER) + 1 AS hour_ending, "
+        "       AVG(lmp) AS lmp, "
+        "       AVG(energy_component) AS energy_component, "
+        "       AVG(congestion_component) AS congestion_component, "
+        "       AVG(loss_component) AS loss_component "
+        "FROM rtm_lmp_api "
+        "WHERE settlement_point = ?"
+    )
+    params: list = [settlement_point]
+    if date_from:
+        query += " AND DATE(time) >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND DATE(time) < ?"
+        params.append(date_to)
+    query += " GROUP BY delivery_date, hour_ending ORDER BY delivery_date, hour_ending"
+
+    with sqlite3.connect(db_path) as conn:
+        df = pd.read_sql_query(query, conn, params=params)
+
+    if df.empty:
+        return df
+
+    df["delivery_date"] = df["delivery_date"].astype("string")
+    df["hour_ending"] = df["hour_ending"].astype("int8")
+    for col in ["lmp", "energy_component", "congestion_component", "loss_component"]:
+        df[col] = df[col].astype("float32")
+    return df
+
+
+def load_fuel_gen_hourly(
+    db_path: Path,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load hourly fuel generation in MW with expanded fuel groups.
+
+    Uses ``FUEL_GROUPS_EXPANDED`` to keep Gas-CC separate from simple Gas.
+
+    Returns DataFrame with columns: delivery_date, hour_ending,
+    gas_gen_mw, gas_cc_gen_mw, coal_gen_mw, nuclear_gen_mw, solar_gen_mw,
+    wind_gen_mw, hydro_gen_mw, biomass_gen_mw, total_gen_mw.
+    """
+    fuel_case = "CASE fuel " + " ".join(
+        f"WHEN '{raw}' THEN '{group}'"
+        for raw, group in sorted(FUEL_GROUPS_EXPANDED.items())
+    ) + " ELSE NULL END"
+
+    query = (
+        "SELECT delivery_date, "
+        "       CAST(((interval_15min - 1) / 4) AS INTEGER) + 1 AS hour_ending, "
+        f"      {fuel_case} AS fuel_group, "
+        "       SUM(generation_mw) AS generation_mw "
+        "FROM fuel_mix_hist "
+        "WHERE 1=1"
+    )
+    params: list = []
+    if date_from:
+        query += " AND delivery_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND delivery_date < ?"
+        params.append(date_to)
+    query += " GROUP BY delivery_date, hour_ending, fuel_group"
+
+    with sqlite3.connect(db_path) as conn:
+        hourly = pd.read_sql_query(query, conn, params=params)
+
+    if hourly.empty:
+        return hourly
+
+    hourly = hourly.dropna(subset=["fuel_group"])
+    # Exclude 'other' from features
+    hourly = hourly[hourly["fuel_group"] != "other"]
+
+    wide = hourly.pivot_table(
+        index=["delivery_date", "hour_ending"],
+        columns="fuel_group",
+        values="generation_mw",
+        fill_value=0,
+    ).reset_index()
+    wide.columns.name = None
+
+    result = wide[["delivery_date", "hour_ending"]].copy()
+    result["delivery_date"] = result["delivery_date"].astype("string")
+    result["hour_ending"] = result["hour_ending"].astype("int8")
+
+    gen_groups = ["gas", "gas_cc", "coal", "nuclear", "solar", "wind", "hydro", "biomass"]
+    for grp in gen_groups:
+        col_name = f"{grp}_gen_mw"
+        if grp in wide.columns:
+            result[col_name] = wide[grp].astype("float32")
+        else:
+            result[col_name] = np.float32(0.0)
+
+    result["total_gen_mw"] = result[[f"{g}_gen_mw" for g in gen_groups]].sum(axis=1).astype("float32")
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Split helper
 # ---------------------------------------------------------------------------
 
@@ -274,12 +436,24 @@ def run_pipeline(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Fuel mix is shared across settlement points – load once.
+    # Shared data (not per-settlement-point) – load once.
     if verbose:
-        print("Loading fuel mix …")
+        print("Loading fuel mix (percentages) …")
     fuel_hourly = load_fuel_mix_hourly(db_path)
     if verbose and fuel_hourly is not None:
         print(f"  fuel-mix rows (hourly): {len(fuel_hourly):,}")
+
+    if verbose:
+        print("Loading ancillary service prices …")
+    ancillary_hourly = load_ancillary_hourly(db_path)
+    if verbose:
+        print(f"  ancillary rows: {len(ancillary_hourly):,}")
+
+    if verbose:
+        print("Loading expanded fuel generation MW …")
+    fuel_gen_hourly = load_fuel_gen_hourly(db_path)
+    if verbose:
+        print(f"  fuel-gen rows: {len(fuel_gen_hourly):,}")
 
     for sp in sps:
         if verbose:
@@ -296,9 +470,23 @@ def run_pipeline(
             print(f"  ⚠ skipping {sp} – no data")
             continue
 
-        features = _coerce_training_schema(compute_features(dam, rtm, fuel_hourly))
+        # RTM components are per-settlement-point and have limited coverage.
+        # Load if available; will produce NaN features for dates outside range.
+        rtm_comp = load_rtm_components_hourly(db_path, sp)
         if verbose:
-            print(f"  feature rows: {len(features):,}")
+            n_comp = len(rtm_comp) if rtm_comp is not None and not rtm_comp.empty else 0
+            print(f"  RTM component rows: {n_comp:,}")
+
+        features = _coerce_training_schema(
+            compute_features(
+                dam, rtm, fuel_hourly,
+                ancillary_hourly=ancillary_hourly,
+                rtm_components_hourly=rtm_comp if not rtm_comp.empty else None,
+                fuel_gen_hourly=fuel_gen_hourly,
+            )
+        )
+        if verbose:
+            print(f"  feature rows: {len(features):,}  feature cols: {len([c for c in FEATURE_COLUMNS if c in features.columns])}")
 
         train, val, test = split_by_date(features)
         if verbose:

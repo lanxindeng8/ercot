@@ -885,12 +885,14 @@ async def get_accuracy(
 
 def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
     """
-    Fetch DAM + RTM data and compute unified features.
+    Fetch DAM + RTM data and compute unified features (80 features).
 
     Prefers SQLite archive as primary source; falls back to InfluxDB if SQLite
-    is unavailable or returns insufficient data.
+    is unavailable or returns insufficient data.  Also loads ancillary service
+    prices, RTM congestion components, and expanded fuel generation MW when
+    available from the SQLite archive.
 
-    Returns a DataFrame with all 41 feature columns needed by DAM/RTM/Spike models.
+    Returns a DataFrame with all 80 feature columns needed by DAM/RTM/Spike models.
     Raises HTTPException on failure.
     """
     features_df = _try_sqlite_features(settlement_point)
