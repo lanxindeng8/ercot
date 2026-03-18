@@ -47,6 +47,7 @@ from train import (
     SPIKE_MULTIPLIER,
     ROLLING_WINDOW,
     add_spike_features,
+    binary_confusion_counts,
     generate_spike_labels,
 )
 
@@ -138,8 +139,7 @@ def compute_revenue_impact(y_true: np.ndarray, y_pred: np.ndarray,
     - False positive: pay opportunity cost = HOLD_SOC_PENALTY * BATTERY_CAPACITY_MWH
     - False negative: missed spike revenue
     """
-    cm = confusion_matrix(y_true, y_pred)
-    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    _, fp, fn, tp = binary_confusion_counts(y_true, y_pred)
 
     # Revenue from correctly predicted spikes (discharge at spike price)
     tp_mask = (y_true == 1) & (y_pred == 1)
@@ -205,8 +205,7 @@ def evaluate_sp(sp: str) -> dict:
     except ValueError:
         auc_roc = float("nan")
 
-    cm = confusion_matrix(y_true, preds)
-    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    tn, fp, fn, tp = binary_confusion_counts(y_true, preds)
 
     # --- Precision@K ---
     n_spikes = int(y_true.sum())

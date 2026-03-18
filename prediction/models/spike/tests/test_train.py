@@ -12,6 +12,7 @@ from train import (
     FEATURE_COLS,
     FUEL_COLS,
     add_spike_features,
+    binary_confusion_counts,
     compute_classification_metrics,
     generate_spike_labels,
 )
@@ -132,6 +133,36 @@ class TestAddSpikeFeatures:
         result = add_spike_features(df)
         pd.testing.assert_series_equal(result["rtm_lmp"], orig_rtm)
 
+    def test_current_rtm_price_does_not_change_same_row_features(self):
+        """Derived features should not depend on the current-hour RTM price."""
+        df = _make_synthetic_data(n=48)
+        fixed_probs = {h: 0.1 for h in range(1, 25)}
+
+        base = add_spike_features(df, train_hour_probs=fixed_probs)
+
+        altered = df.copy()
+        altered.loc[10, "rtm_lmp"] += 1000
+        altered.loc[10, "dam_rtm_spread"] += 1000
+        altered.loc[10, "rtm_roll_24h_mean"] += 1000
+        altered.loc[10, "rtm_roll_24h_std"] += 100
+        altered.loc[10, "rtm_roll_24h_min"] -= 500
+        altered.loc[10, "rtm_roll_24h_max"] += 500
+        altered = add_spike_features(altered, train_hour_probs=fixed_probs)
+
+        same_row_cols = [
+            "dam_rtm_spread",
+            "rtm_roll_24h_mean",
+            "rtm_roll_24h_std",
+            "rtm_roll_24h_min",
+            "rtm_roll_24h_max",
+            "volatility_regime",
+            "price_momentum",
+            "price_ratio_to_mean",
+            "rtm_range_24h",
+        ]
+        for col in same_row_cols:
+            assert altered.loc[10, col] == pytest.approx(base.loc[10, col], nan_ok=True)
+
 
 class TestComputeClassificationMetrics:
     """Tests for the metrics computation function."""
@@ -175,6 +206,36 @@ class TestComputeClassificationMetrics:
         metrics = compute_classification_metrics(y_true, y_pred, y_prob)
         assert metrics["n_positive"] == 0
         assert metrics["n_negative"] == 10
+        assert metrics["confusion_matrix"] == {"tn": 10, "fp": 0, "fn": 0, "tp": 0}
+
+    def test_all_positives_confusion_matrix(self):
+        """All-positive labels should still produce a full 2x2 confusion matrix."""
+        y_true = np.ones(6)
+        y_pred = np.array([1, 1, 0, 1, 0, 1])
+        y_prob = np.array([0.9, 0.8, 0.1, 0.7, 0.2, 0.6])
+        metrics = compute_classification_metrics(y_true, y_pred, y_prob)
+        assert metrics["confusion_matrix"] == {"tn": 0, "fp": 0, "fn": 2, "tp": 4}
+
+    def test_binary_confusion_counts_single_class(self):
+        """The low-level helper should handle single-class inputs directly."""
+        assert binary_confusion_counts(np.zeros(4), np.ones(4)) == (0, 4, 0, 0)
+        assert binary_confusion_counts(np.ones(4), np.zeros(4)) == (0, 0, 4, 0)
+
+
+class TestSpikeLabelsNoLeakage:
+    """Regression tests for spike label leakage."""
+
+    def test_current_hour_spike_does_not_label_same_row(self):
+        """A spike in the current hour should only affect the prior row's label."""
+        df = pd.DataFrame({
+            "rtm_lmp": [20.0, 20.0, 20.0, 20.0, 1000.0, 20.0],
+        })
+
+        labels = generate_spike_labels(df)
+
+        assert labels.iloc[3] == 1
+        assert labels.iloc[4] == 0
+        assert pd.isna(labels.iloc[-1])
 
 
 class TestSyntheticTrainSmoke:
@@ -187,6 +248,9 @@ class TestSyntheticTrainSmoke:
         df = _make_synthetic_data(n=500, spike_frac=0.1)
         df = add_spike_features(df)
         labels = generate_spike_labels(df)
+        valid = labels.notna()
+        df = df.loc[valid].copy()
+        labels = labels.loc[valid].astype(int)
 
         available = [c for c in FEATURE_COLS if c in df.columns]
         X = df[available]
@@ -218,6 +282,9 @@ class TestSyntheticTrainSmoke:
         df = _make_synthetic_data(n=300, spike_frac=0.1, seed=99)
         df = add_spike_features(df)
         labels = generate_spike_labels(df)
+        valid = labels.notna()
+        df = df.loc[valid].copy()
+        labels = labels.loc[valid].astype(int)
 
         available = [c for c in FEATURE_COLS if c in df.columns]
         X = df[available]

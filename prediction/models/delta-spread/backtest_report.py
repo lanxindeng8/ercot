@@ -63,9 +63,17 @@ class TradeLog:
         drawdown = running_max - cumulative
         peak_val = running_max[np.argmax(drawdown)] if len(drawdown) > 0 else 0.0
 
-        # Annualized Sharpe: mean hourly return / std * sqrt(hours/year)
-        # Since we don't trade every hour, scale by trades per year
-        trades_per_year = len(pnls) / (len(pnls) / ANNUAL_TRADING_HOURS) if len(pnls) > 0 else 0
+        # Annualize by the observed trade cadence instead of always assuming
+        # hourly trading. This keeps sparse strategies from being overstated.
+        trades_per_year = 0.0
+        if len(self.timestamps) > 1:
+            ts = pd.to_datetime(pd.Series(self.timestamps), errors="coerce").dropna().sort_values()
+            if len(ts) > 1:
+                elapsed_hours = (ts.iloc[-1] - ts.iloc[0]).total_seconds() / 3600
+            else:
+                elapsed_hours = 0
+            if elapsed_hours > 0:
+                trades_per_year = ((len(pnls) - 1) / elapsed_hours) * ANNUAL_TRADING_HOURS
         mean_pnl = pnls.mean()
         std_pnl = pnls.std() if len(pnls) > 1 else 1.0
         sharpe = (mean_pnl / std_pnl) * np.sqrt(trades_per_year) if std_pnl > 0 else 0.0

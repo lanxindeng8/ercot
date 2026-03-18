@@ -39,8 +39,15 @@ TARGET_PRICE = "rtm_lmp"
 SPIKE_THRESHOLD = 100.0  # absolute floor ($/MWh)
 SPIKE_MULTIPLIER = 3.0   # multiplier on rolling mean
 ROLLING_WINDOW = 24      # hours for rolling mean
+LABEL_LOOKAHEAD = 1      # predict next-hour spikes
 
 FUEL_COLS = ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]
+
+LEAKAGE_PRONE_FEATURES = [
+    "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
+    "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
+    "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
+]
 
 # Base features from training parquets
 BASE_FEATURES = [
@@ -83,11 +90,16 @@ CAT_FEATURES = [
 def generate_spike_labels(df: pd.DataFrame) -> pd.Series:
     """Generate binary spike labels.
 
-    spike = 1 if rtm_lmp > max(SPIKE_THRESHOLD, SPIKE_MULTIPLIER * rolling_24h_mean)
+    Label at time t predicts whether the next hour spikes, using only RTM
+    history available strictly before time t.
     """
-    rolling_mean = df[TARGET_PRICE].rolling(window=ROLLING_WINDOW, min_periods=1).mean()
-    threshold = np.maximum(SPIKE_THRESHOLD, SPIKE_MULTIPLIER * rolling_mean)
-    return (df[TARGET_PRICE] > threshold).astype(int)
+    future_price = df[TARGET_PRICE].shift(-LABEL_LOOKAHEAD)
+    rolling_mean = df[TARGET_PRICE].shift(1).rolling(window=ROLLING_WINDOW, min_periods=1).mean()
+    threshold = pd.Series(
+        np.maximum(SPIKE_THRESHOLD, SPIKE_MULTIPLIER * rolling_mean.fillna(0.0)),
+        index=df.index,
+    )
+    return (future_price > threshold).where(future_price.notna()).astype(float)
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +118,10 @@ def add_spike_features(df: pd.DataFrame, train_hour_probs: dict | None = None) -
         DataFrame with spike features added.
     """
     df = df.copy()
+
+    for col in LEAKAGE_PRONE_FEATURES:
+        if col in df.columns:
+            df[col] = df[col].shift(1)
 
     # Price acceleration (2nd derivative): diff of rtm_lag differences
     price_diff1 = df["rtm_lag_1h"] - df["rtm_lag_4h"]
@@ -126,11 +142,11 @@ def add_spike_features(df: pd.DataFrame, train_hour_probs: dict | None = None) -
         hour_probs = labels.groupby(df["hour_of_day"]).mean()
         df["hour_spike_prob"] = df["hour_of_day"].map(hour_probs).fillna(0)
 
-    # Price momentum: current price vs rolling mean
-    df["price_momentum"] = df[TARGET_PRICE] - df["rtm_roll_24h_mean"]
+    # Price momentum: last observed price vs trailing rolling mean
+    df["price_momentum"] = df["rtm_lag_1h"] - df["rtm_roll_24h_mean"]
 
     # Price ratio to rolling mean
-    df["price_ratio_to_mean"] = df[TARGET_PRICE] / df["rtm_roll_24h_mean"].replace(0, np.nan)
+    df["price_ratio_to_mean"] = df["rtm_lag_1h"] / df["rtm_roll_24h_mean"].replace(0, np.nan)
     df["price_ratio_to_mean"] = df["price_ratio_to_mean"].fillna(1)
 
     # 24h price range
@@ -171,6 +187,8 @@ def load_data(sp: str):
     # Generate labels
     for split in ("train", "val", "test"):
         dfs[split]["spike"] = generate_spike_labels(dfs[split])
+        dfs[split] = dfs[split][dfs[split]["spike"].notna()].copy()
+        dfs[split]["spike"] = dfs[split]["spike"].astype(int)
 
     return dfs["train"], dfs["val"], dfs["test"], hour_probs
 
@@ -182,8 +200,7 @@ def load_data(sp: str):
 def compute_classification_metrics(y_true: np.ndarray, y_pred: np.ndarray,
                                    y_prob: np.ndarray) -> dict:
     """Compute precision, recall, F1, AUC-ROC, confusion matrix."""
-    cm = confusion_matrix(y_true, y_pred)
-    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    tn, fp, fn, tp = binary_confusion_counts(y_true, y_pred)
 
     precision = precision_score(y_true, y_pred, zero_division=0)
     recall = recall_score(y_true, y_pred, zero_division=0)
@@ -204,6 +221,13 @@ def compute_classification_metrics(y_true: np.ndarray, y_pred: np.ndarray,
         "n_negative": int((1 - y_true).sum()),
         "positive_rate": round(float(y_true.mean()), 4),
     }
+
+
+def binary_confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[int, int, int, int]:
+    """Return TN, FP, FN, TP even when only one class is present."""
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
+    return int(tn), int(fp), int(fn), int(tp)
 
 
 # ---------------------------------------------------------------------------

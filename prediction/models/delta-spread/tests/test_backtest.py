@@ -98,6 +98,29 @@ class TestTradeLog:
         m = log.metrics()
         assert abs(m["win_rate"] - 0.5) < 1e-6
 
+    def test_sharpe_annualization_uses_trade_cadence(self):
+        """Sharpe should scale with observed trade frequency, not a fixed hourly factor."""
+        log = TradeLog(name="cadence")
+        spreads = [2.5, 0.5, 2.5, 0.5]  # net pnls = [2, 0, 2, 0]
+        timestamps = pd.to_datetime([
+            "2025-01-01 00:00:00",
+            "2025-01-31 00:00:00",
+            "2025-03-02 00:00:00",
+            "2025-04-01 00:00:00",
+        ])
+
+        for ts, spread in zip(timestamps, spreads):
+            log.add(ts, 1, spread)
+
+        m = log.metrics()
+        elapsed_hours = (timestamps[-1] - timestamps[0]).total_seconds() / 3600
+        expected_trades_per_year = ((len(spreads) - 1) / elapsed_hours) * 8760
+        expected_sharpe = np.array([2.0, 0.0, 2.0, 0.0]).mean() / np.array([2.0, 0.0, 2.0, 0.0]).std()
+        expected_sharpe *= np.sqrt(expected_trades_per_year)
+
+        assert m["sharpe_ratio"] == pytest.approx(expected_sharpe)
+        assert m["sharpe_ratio"] < np.sqrt(8760)
+
 
 class TestRunStrategies:
     """Test strategy logic on synthetic prediction data."""
