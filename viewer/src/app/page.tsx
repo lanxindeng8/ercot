@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PriceTable from "@/components/PriceTable";
 import PriceChart from "@/components/PriceChart";
 
@@ -7,6 +8,10 @@ export default function Home() {
       <header>
         <h1>ERCOT Settlement Point Prices</h1>
         <p>Data sourced from ERCOT Public API</p>
+        <nav className="main-nav">
+          <Link href="/" className="main-nav-link active">Market Data</Link>
+          <Link href="/predictions" className="main-nav-link">Predictions</Link>
+        </nav>
       </header>
 
       <PriceChart />
