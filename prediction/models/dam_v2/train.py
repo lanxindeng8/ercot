@@ -28,34 +28,61 @@ ROOT = Path(__file__).resolve().parent
 CHECKPOINT_DIR = ROOT / "checkpoints"
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "training"
 
-SETTLEMENT_POINTS = ["hb_west", "hb_north", "hb_south", "hb_houston", "hb_busavg"]
+SETTLEMENT_POINTS = ["hb_west", "hb_houston", "hb_north", "hb_south", "lz_lcra", "lz_west"]
 
 TARGET = "dam_lmp"
 
-FUEL_COLS = ["wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct"]
-
 FEATURE_COLS = [
-    # Temporal
+    # Temporal (7)
     "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
     "is_holiday", "is_summer",
-    # DAM lags
+    # DAM lags (4)
     "dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h",
-    # RTM lags
+    # RTM lags (4)
     "rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h",
-    # DAM rolling
+    # DAM rolling (8)
     "dam_roll_24h_mean", "dam_roll_24h_std", "dam_roll_24h_min", "dam_roll_24h_max",
     "dam_roll_168h_mean", "dam_roll_168h_std", "dam_roll_168h_min", "dam_roll_168h_max",
-    # RTM rolling
+    # RTM rolling (8)
     "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
     "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
-    # Cross-market
+    # Cross-market (3)
     "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
-    # Fuel mix
-    *FUEL_COLS,
+    # Fuel mix pct (6)
+    "wind_pct", "solar_pct", "gas_pct", "nuclear_pct", "coal_pct", "hydro_pct",
+    # Ancillary service (13)
+    "regdn", "regup", "rrs", "nspin", "ecrs",
+    "reg_spread", "total_as_cost",
+    "regup_lag_24h", "rrs_lag_24h", "nspin_lag_24h", "total_as_lag_24h",
+    "total_as_roll_24h_mean", "total_as_roll_24h_std",
+    # RTM components (6)
+    "congestion_pct", "loss_pct", "energy_pct",
+    "congestion_ma_4h", "congestion_volatility_24h", "high_congestion_flag",
+    # Fuel gen MW (15)
+    "gas_gen_mw", "gas_cc_gen_mw", "coal_gen_mw", "nuclear_gen_mw",
+    "solar_gen_mw", "wind_gen_mw", "hydro_gen_mw", "biomass_gen_mw",
+    "total_gen_mw", "renewable_ratio", "thermal_ratio", "net_load_mw",
+    "solar_ramp_1h", "wind_ramp_1h", "gas_ramp_1h",
+    # Cross-domain (6)
+    "dam_as_ratio", "reg_spread_roll_24h_mean", "ecrs_lag_24h",
+    "gas_cc_share", "wind_ramp_4h", "solar_ramp_4h",
 ]
 
-# Non-fuel features used for dropna (fuel cols may be missing in test period)
-CORE_FEATURES = [c for c in FEATURE_COLS if c not in FUEL_COLS]
+# Nullable columns (optional data sources) — filled with 0 instead of dropping
+NULLABLE_COLS = [c for c in FEATURE_COLS if c not in [
+    "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
+    "is_holiday", "is_summer",
+    "dam_lag_1h", "dam_lag_4h", "dam_lag_24h", "dam_lag_168h",
+    "rtm_lag_1h", "rtm_lag_4h", "rtm_lag_24h", "rtm_lag_168h",
+    "dam_roll_24h_mean", "dam_roll_24h_std", "dam_roll_24h_min", "dam_roll_24h_max",
+    "dam_roll_168h_mean", "dam_roll_168h_std", "dam_roll_168h_min", "dam_roll_168h_max",
+    "rtm_roll_24h_mean", "rtm_roll_24h_std", "rtm_roll_24h_min", "rtm_roll_24h_max",
+    "rtm_roll_168h_mean", "rtm_roll_168h_std", "rtm_roll_168h_min", "rtm_roll_168h_max",
+    "dam_rtm_spread", "spread_roll_24h_mean", "spread_roll_168h_mean",
+]]
+
+# Non-nullable features used for dropna
+CORE_FEATURES = [c for c in FEATURE_COLS if c not in NULLABLE_COLS]
 
 CAT_FEATURES = [
     "hour_of_day", "day_of_week", "month", "is_weekend", "is_peak_hour",
@@ -74,8 +101,8 @@ def load_data(sp: str):
     for split in ("train", "val", "test"):
         path = sp_dir / f"{split}.parquet"
         df = pd.read_parquet(path)
-        # Fill missing fuel data with 0 (not available for all periods)
-        for col in FUEL_COLS:
+        # Fill nullable features with 0 (optional data sources)
+        for col in NULLABLE_COLS:
             if col in df.columns:
                 df[col] = df[col].fillna(0.0)
         before = len(df)

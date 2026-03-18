@@ -30,18 +30,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data" / "training"
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "checkpoints"
 
-# Columns that are all NaN or are targets (not features)
+# Columns that are targets (not features) — all others are used as features
 EXCLUDE_COLS = {
     "delivery_date",
     "dam_lmp",
     "rtm_lmp",
     "dam_rtm_spread",
-    "wind_pct",
-    "solar_pct",
-    "gas_pct",
-    "nuclear_pct",
-    "coal_pct",
-    "hydro_pct",
 }
 
 CAT_FEATURES = [
@@ -68,6 +62,8 @@ def prepare_features(df: pd.DataFrame):
     X = df[feature_cols].copy()
     # Drop columns that are entirely NaN
     X = X.dropna(axis=1, how="all")
+    # Fill remaining NaN in nullable feature columns with 0
+    X = X.fillna(0.0)
     y_spread = df["dam_rtm_spread"].values
     y_direction = (y_spread > 0).astype(int)  # 1 = DAM > RTM
     return X, y_spread, y_direction

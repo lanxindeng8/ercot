@@ -58,13 +58,61 @@ def _make_synthetic_data(n: int = 500, seed: int = 42) -> pd.DataFrame:
     data["spread_roll_24h_mean"] = rng.normal(0, 3, n)
     data["spread_roll_168h_mean"] = rng.normal(0, 2, n)
 
-    # Fuel
+    # Fuel mix pct
     data["wind_pct"] = rng.uniform(0.05, 0.35, n)
     data["solar_pct"] = rng.uniform(0.0, 0.15, n)
     data["gas_pct"] = rng.uniform(0.3, 0.6, n)
     data["nuclear_pct"] = rng.uniform(0.05, 0.12, n)
     data["coal_pct"] = rng.uniform(0.05, 0.20, n)
     data["hydro_pct"] = rng.uniform(0.0, 0.03, n)
+
+    # Ancillary service (13)
+    data["regdn"] = rng.uniform(5, 30, n)
+    data["regup"] = rng.uniform(5, 50, n)
+    data["rrs"] = rng.uniform(3, 25, n)
+    data["nspin"] = rng.uniform(1, 10, n)
+    data["ecrs"] = rng.uniform(1, 15, n)
+    data["reg_spread"] = data["regup"] - data["regdn"]
+    data["total_as_cost"] = data["regdn"] + data["regup"] + data["rrs"] + data["nspin"] + data["ecrs"]
+    data["regup_lag_24h"] = np.roll(data["regup"], 24)
+    data["rrs_lag_24h"] = np.roll(data["rrs"], 24)
+    data["nspin_lag_24h"] = np.roll(data["nspin"], 24)
+    data["total_as_lag_24h"] = np.roll(data["total_as_cost"], 24)
+    data["total_as_roll_24h_mean"] = data["total_as_cost"] + rng.normal(0, 2, n)
+    data["total_as_roll_24h_std"] = np.abs(rng.normal(5, 2, n))
+
+    # RTM components (6)
+    data["congestion_pct"] = rng.uniform(-10, 10, n)
+    data["loss_pct"] = rng.uniform(-5, 5, n)
+    data["energy_pct"] = rng.uniform(80, 100, n)
+    data["congestion_ma_4h"] = rng.uniform(-5, 5, n)
+    data["congestion_volatility_24h"] = np.abs(rng.normal(3, 1, n))
+    data["high_congestion_flag"] = (np.abs(data["congestion_pct"]) > 20).astype(int)
+
+    # Fuel gen MW (15)
+    data["gas_gen_mw"] = rng.uniform(10000, 30000, n)
+    data["gas_cc_gen_mw"] = rng.uniform(8000, 20000, n)
+    data["coal_gen_mw"] = rng.uniform(5000, 15000, n)
+    data["nuclear_gen_mw"] = rng.uniform(4000, 6000, n)
+    data["solar_gen_mw"] = rng.uniform(0, 10000, n)
+    data["wind_gen_mw"] = rng.uniform(2000, 25000, n)
+    data["hydro_gen_mw"] = rng.uniform(100, 1000, n)
+    data["biomass_gen_mw"] = rng.uniform(50, 500, n)
+    data["total_gen_mw"] = sum(data[f"{f}_gen_mw"] for f in ["gas", "gas_cc", "coal", "nuclear", "solar", "wind", "hydro", "biomass"])
+    data["renewable_ratio"] = (data["solar_gen_mw"] + data["wind_gen_mw"]) / data["total_gen_mw"]
+    data["thermal_ratio"] = (data["gas_gen_mw"] + data["gas_cc_gen_mw"] + data["coal_gen_mw"]) / data["total_gen_mw"]
+    data["net_load_mw"] = data["total_gen_mw"] - data["solar_gen_mw"] - data["wind_gen_mw"]
+    data["solar_ramp_1h"] = rng.normal(0, 500, n)
+    data["wind_ramp_1h"] = rng.normal(0, 500, n)
+    data["gas_ramp_1h"] = rng.normal(0, 300, n)
+
+    # Cross-domain (6)
+    data["dam_as_ratio"] = base / (data["total_as_cost"] + 1)
+    data["reg_spread_roll_24h_mean"] = data["reg_spread"] + rng.normal(0, 2, n)
+    data["ecrs_lag_24h"] = np.roll(data["ecrs"], 24)
+    data["gas_cc_share"] = data["gas_cc_gen_mw"] / data["total_gen_mw"]
+    data["wind_ramp_4h"] = rng.normal(0, 1000, n)
+    data["solar_ramp_4h"] = rng.normal(0, 1000, n)
 
     # RTM target (not used for DAM training but present in parquet)
     data["rtm_lmp"] = base + rng.normal(0, 8, n)
