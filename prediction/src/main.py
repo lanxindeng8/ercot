@@ -663,17 +663,60 @@ async def predict_bess(
 
 def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
     """
-    Fetch DAM + RTM data from InfluxDB and compute unified features.
+    Fetch DAM + RTM data and compute unified features.
+
+    Prefers SQLite archive as primary source; falls back to InfluxDB if SQLite
+    is unavailable or returns insufficient data.
 
     Returns a DataFrame with all 41 feature columns needed by DAM/RTM/Spike models.
     Raises HTTPException on failure.
     """
+    features_df = _try_sqlite_features(settlement_point)
+    if features_df is not None:
+        return features_df
+
+    # Fallback: InfluxDB
+    return _influxdb_features(settlement_point)
+
+
+def _try_sqlite_features(settlement_point: str) -> Optional[pd.DataFrame]:
+    """Attempt to load features from SQLite. Returns None on failure."""
+    from .data.sqlite_fetcher import create_sqlite_fetcher
+
+    fetcher = None
+    try:
+        fetcher = create_sqlite_fetcher()
+        start = datetime.utcnow() - timedelta(days=30)
+        dam_raw = fetcher.fetch_dam_prices(settlement_point=settlement_point, start_date=start)
+        rtm_raw = fetcher.fetch_rtm_prices(settlement_point=settlement_point, start_date=start)
+    except Exception as e:
+        log.warning("SQLite fetch failed, will try InfluxDB: %s", e)
+        return None
+    finally:
+        if fetcher is not None:
+            fetcher.close()
+
+    if dam_raw.empty or rtm_raw.empty:
+        log.info("SQLite returned no data for %s, will try InfluxDB", settlement_point)
+        return None
+
+    dam_hourly, rtm_hourly = _raw_to_hourly(dam_raw, rtm_raw)
+    features_df = compute_features(dam_hourly, rtm_hourly)
+
+    if features_df.empty:
+        log.info("SQLite feature computation returned no rows for %s", settlement_point)
+        return None
+
+    return features_df
+
+
+def _influxdb_features(settlement_point: str) -> pd.DataFrame:
+    """Fetch features from InfluxDB (fallback path)."""
     from .data.influxdb_fetcher import create_fetcher_from_env
 
     fetcher = None
     try:
         fetcher = create_fetcher_from_env()
-        # Fetch last 30 days (enough for 168h rolling windows + buffer)
         start = datetime.utcnow() - timedelta(days=30)
         dam_raw = fetcher.fetch_dam_prices(settlement_point=settlement_point, start_date=start)
         rtm_raw = fetcher.fetch_rtm_prices(settlement_point=settlement_point, start_date=start)
@@ -686,7 +729,17 @@ def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
     if dam_raw.empty or rtm_raw.empty:
         raise HTTPException(status_code=404, detail=f"Insufficient data for {settlement_point}")
 
-    # Convert InfluxDB format to unified_features format
+    dam_hourly, rtm_hourly = _raw_to_hourly(dam_raw, rtm_raw)
+    features_df = compute_features(dam_hourly, rtm_hourly)
+
+    if features_df.empty:
+        raise HTTPException(status_code=404, detail="Feature computation returned no rows (insufficient history)")
+
+    return features_df
+
+
+def _raw_to_hourly(dam_raw: pd.DataFrame, rtm_raw: pd.DataFrame):
+    """Convert fetcher output (InfluxDB or SQLite format) to unified hourly frames."""
     # DAM: needs delivery_date, hour_ending, lmp
     dam_hourly = dam_raw.reset_index()
     dam_hourly = dam_hourly.rename(columns={"dam_price": "lmp"})
@@ -705,12 +758,7 @@ def _fetch_and_compute_features(settlement_point: str) -> pd.DataFrame:
     rtm_hourly["hour_ending"] = rtm_hourly["timestamp"].dt.hour + 1
     rtm_hourly = rtm_hourly.groupby(["delivery_date", "hour_ending"], as_index=False)["lmp"].mean()
 
-    features_df = compute_features(dam_hourly, rtm_hourly)
-
-    if features_df.empty:
-        raise HTTPException(status_code=404, detail="Feature computation returned no rows (insufficient history)")
-
-    return features_df
+    return dam_hourly, rtm_hourly
 
 
 def _build_wind_features() -> pd.DataFrame:
