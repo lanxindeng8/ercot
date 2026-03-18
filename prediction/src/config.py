@@ -14,6 +14,8 @@ DAM_V2_CHECKPOINTS = MODELS_DIR / "dam_v2" / "checkpoints"
 RTM_CHECKPOINTS = MODELS_DIR / "rtm" / "checkpoints"
 SPIKE_CHECKPOINTS = MODELS_DIR / "spike" / "checkpoints"
 DELTA_SPREAD_MODELS = MODELS_DIR / "delta-spread" / "models"
+WIND_CHECKPOINTS = MODELS_DIR / "wind" / "checkpoints" / "gbm_model"
+LOAD_CHECKPOINTS = MODELS_DIR / "load" / "checkpoints"
 
 # InfluxDB configuration
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "https://us-east-1-1.aws.cloud2.influxdata.com")

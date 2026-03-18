@@ -6,6 +6,9 @@ import DamForecastChart from "@/components/DamForecastChart";
 import RtmHorizonChart from "@/components/RtmHorizonChart";
 import DeltaSpreadPanel from "@/components/DeltaSpreadPanel";
 import SpikeAlertPanel from "@/components/SpikeAlertPanel";
+import WindForecastChart from "@/components/WindForecastChart";
+import LoadForecastChart from "@/components/LoadForecastChart";
+import BessSchedulePanel from "@/components/BessSchedulePanel";
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -78,13 +81,26 @@ export default function PredictionsPage() {
         </div>
       </div>
 
+      <div className="dash-grid">
+        <div className="dash-col-wide">
+          <WindForecastChart refreshKey={refreshKey} />
+        </div>
+        <div className="dash-col-narrow">
+          <LoadForecastChart refreshKey={refreshKey} />
+        </div>
+      </div>
+
+      <div className="dash-full-width">
+        <BessSchedulePanel refreshKey={refreshKey} />
+      </div>
+
       <div className="dash-full-width">
         <DeltaSpreadPanel refreshKey={refreshKey} />
       </div>
 
       <footer className="dash-footer">
         <p>
-          Predictions powered by LightGBM & CatBoost models trained on ERCOT historical data.
+          Predictions powered by LightGBM, CatBoost & LP optimization trained on ERCOT historical data.
           Not financial advice.
         </p>
       </footer>

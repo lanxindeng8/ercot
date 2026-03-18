@@ -732,6 +732,101 @@ footer a:hover {
 .spike-conf-medium { color: #ffd93d; }
 .spike-conf-low { color: #00b894; }
 
+/* Load Forecast */
+.load-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.load-stat {
+  flex: 1;
+  padding: 10px 14px;
+  background: #12122a;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.load-stat-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.load-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+.load-stat-detail {
+  font-size: 10px;
+  color: #666;
+}
+
+/* BESS Schedule */
+.bess-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #12122a;
+  border-radius: 6px;
+}
+
+.bess-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bess-stat-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bess-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  font-family: "Consolas", "Monaco", monospace;
+}
+
+.bess-revenue {
+  color: #00b894;
+}
+
+.bess-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #888;
+}
+
+.bess-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bess-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
 /* Dashboard Footer */
 .dash-footer {
   text-align: center;
@@ -784,5 +879,13 @@ footer a:hover {
 
   .signal-badges {
     margin-left: 0;
+  }
+
+  .load-summary {
+    flex-direction: column;
+  }
+
+  .bess-summary {
+    flex-direction: column;
   }
 }
