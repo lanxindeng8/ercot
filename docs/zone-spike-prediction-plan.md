@@ -51,20 +51,28 @@
 
 ### Phase 0: 补全已有数据 (1 天)
 
-1. **Fuel Mix 2025-01 ~ 2026-03**: 补爬 15 个月断档
-2. **RTM congestion components 历史**: `rtm_lmp_api` 只有 5 周。检查 ERCOT 是否提供历史 5min LMP with components (可能需要从 ERCOT MIS 下载 CSV archives)
+1. **Fuel Mix 2025-01 ~ 2026-03**: 补爬 15 个月断档。`fuel_mix_hist` 停在 2024-12-31。
+2. **RTM congestion components 历史**: `rtm_lmp_api` 只有 5 周 (2026-02-09~now)。ERCOT 无法通过公开 API 获取更早的 5min congestion components。**替代方案**：用 `rtm_lmp_hist` 的 LMP 差值 (LZ - Hub) 近似 congestion signal。
 
 ### Phase 1: 新数据源爬虫 (3-5 天)
 
 每个数据源需要: 理解 API 格式 → 写爬虫 → 历史回填 → 存入 SQLite → 写质量检查。
 
-| 优先级 | 数据源 | ERCOT Product | 为什么重要 | 工作量 |
-|--------|--------|--------------|-----------|-------|
-| P0 | **RT Reserves + ORDC** | NP6-792-ER (历史), NP6-323-CD (实时) | 文档说的 "预测 regime 而非价格" — reserve margin 是最直接的 regime 信号 | 2 天 |
-| P0 | **Zone-level 天气** | Open-Meteo API (免费) 或 HRRR via Herbie | 温度异常、降温速度、冷锋指标 — 对 LZ_CPS 尤其关键 | 1 天 |
-| P1 | **Wind Forecast** | NP4-732-CD | 计算 forecast error (surprise) — 文档说的 "比预期更没风" | 1 天 |
-| P1 | **Binding Constraints** | NP6-86-CD | shadow price 直接解释 congestion-driven spike | 2 天 |
-| P2 | **System Load Forecast** | NP3-565-CD | load forecast error → demand surprise | 1 天 |
+**🔬 小规模验证结果 (2026-03-19):**
+
+| 优先级 | 数据源 | ERCOT Product | 验证状态 | 数据量 (11yr) | 工作量 |
+|--------|--------|--------------|---------|-------------|-------|
+| P0 | **RT Reserves + ORDC** | NP6-792-ER | ✅ **已验证** — MIS 匿名下载 XLSX, 33 列含 PRC/System Lambda/RTOLCAP 等, ~9K rows/月, header 在 row 8 | ~230 MB | 2 天 |
+| P0 | **Zone-level 天气** | Open-Meteo Archive API | ✅ **已验证** — 免费 REST, 1h 粒度, T/Wind/Humidity/Pressure, San Antonio 2025-12-14 冷锋确认 (18.6→6.3°C) | ~16 MB | 1 天 |
+| P1 | **Wind Forecast** | NP4-732-CD | ✅ **已验证** — CSV, 含 GEN+STWPF+WGRPP per region (South_Houston/West/North), 滚动 48h 历史 | ~20 MB (近期) | 1 天 |
+| ~~P1~~ | ~~Binding Constraints~~ | ~~NP6-86-CD~~ | ⚠️ **验证后放弃** — 每 SCED interval (~5min) 一个 CSV, 105K 文件/年, 回填需 100K+ HTTP requests (~200MB/yr zips) | ~~TB级~~ | ~~不可行~~ |
+| P2 | **System Load Forecast** | NP3-565-CD | 未验证 | 待定 | 1 天 |
+
+**关键发现:**
+- ERCOT MIS (`misapp/servlets/IceDocListJsonWS`) **不需要 API credentials**，匿名即可列出+下载
+- 我们的 `scraper/.env` 没有配 ERCOT API credentials，历史数据是通过 MIS bulk 下载导入的
+- Open-Meteo `wind_speed_80m` 在 archive API 中全是 null，需用 ERA5 endpoint 或只用 10m 风速
+- Binding Constraints 历史回填不可行，改用 zone-hub spread (LMP 差值) 近似 congestion
 
 ### 天气数据方案对比
 
