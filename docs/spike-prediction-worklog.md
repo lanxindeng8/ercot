@@ -196,10 +196,26 @@ CREATE TABLE rt_reserves (
 
 ---
 
-## 执行顺序
+## 执行记录
 
-1. **Step 0.1**: 创建目录结构 (Kira 自己做，<5 行)
-2. **Step 0.2**: Open-Meteo 天气数据 → 派 CC
-3. **Step 0.3**: Wind Forecast 数据 → 派 CC (可与 0.2 并行)
-4. **Step 0.4**: RT Reserves 数据 → 派 CC (可与 0.2/0.3 并行)
-5. **验证**: 用 2025-12-14 案例日检查所有数据对齐
+### Step 0.1: 目录结构 ✅
+- Kira 自己做，commit `57aec0a`
+
+### Step 0.2: Open-Meteo 天气数据 ✅ → 🔧 Codex Review 修复中
+- CC 写完 (session `glow-daisy`): 5 文件，29 tests pass
+- Codex review (session `mellow-falcon`) 发现 6 个问题:
+  1. 🔴 Wind Chill 输出华氏度（应为摄氏度）
+  2. 🔴 DST 时间冲突 — local time PK 在 fall-back 丢数据
+  3. 🔴 shift(1) 是 row-based，DST 日变成 2h delta
+  4. 🟡 API 错误无容错
+  5. 🟡 INSERT OR REPLACE 语义不对
+  6. 🟡 测试太弱
+- CC 修复中 (session `crisp-cedar`)
+
+### Step 0.3: Wind Forecast 数据 ✅ → 待 Codex Review
+- CC 写完 (session `faint-orbit`): 3 文件，13 tests pass
+- 待 Codex review
+
+### Step 0.4: RT Reserves 数据 — 任务已规划，待启动
+
+### Step 0.5: 验证 — 用 2025-12-14 案例日检查所有数据对齐
