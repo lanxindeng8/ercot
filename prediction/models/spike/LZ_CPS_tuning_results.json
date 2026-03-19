@@ -1,0 +1,33 @@
+{
+  "settlement_point": "LZ_CPS",
+  "n_trials": 50,
+  "best_trial": 41,
+  "best_val_pr_auc": 0.4869424500198207,
+  "best_params": {
+    "num_leaves": 118,
+    "learning_rate": 0.02843949153493501,
+    "feature_fraction": 0.77744931641692,
+    "bagging_fraction": 0.7152587338698575,
+    "min_child_samples": 91,
+    "scale_pos_weight": 292.2647498303474,
+    "reg_alpha": 0.8853694444458715,
+    "reg_lambda": 3.846872493129705,
+    "max_depth": 10,
+    "min_split_gain": 0.865689746337521,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9874395527351826,
+    "pr_auc": 0.5461429069828928,
+    "precision_at_recall_50": 0.5689655172413793,
+    "precision": 0.4077669902912621,
+    "recall": 0.6461538461538462,
+    "n_positive": 65,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 6,
+    "events_detected": 5,
+    "event_recall": 0.8333333333333334
+  }
+}

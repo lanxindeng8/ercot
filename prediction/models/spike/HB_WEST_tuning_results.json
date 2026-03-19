@@ -1,0 +1,33 @@
+{
+  "settlement_point": "HB_WEST",
+  "n_trials": 50,
+  "best_trial": 41,
+  "best_val_pr_auc": 0.537773408612994,
+  "best_params": {
+    "num_leaves": 96,
+    "learning_rate": 0.03575255673618793,
+    "feature_fraction": 0.9700608215360973,
+    "bagging_fraction": 0.5327430525494429,
+    "min_child_samples": 66,
+    "scale_pos_weight": 61.843425815043744,
+    "reg_alpha": 9.11499169655518,
+    "reg_lambda": 8.109837813016616,
+    "max_depth": -1,
+    "min_split_gain": 0.49886231642574735,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9906628116852731,
+    "pr_auc": 0.6034544185370088,
+    "precision_at_recall_50": 0.6785714285714286,
+    "precision": 0.17632241813602015,
+    "recall": 1.0,
+    "n_positive": 70,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 5,
+    "events_detected": 5,
+    "event_recall": 1.0
+  }
+}

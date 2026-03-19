@@ -1,0 +1,33 @@
+{
+  "settlement_point": "HB_HOUSTON",
+  "n_trials": 50,
+  "best_trial": 20,
+  "best_val_pr_auc": 0.20521634997300475,
+  "best_params": {
+    "num_leaves": 29,
+    "learning_rate": 0.027297793435874,
+    "feature_fraction": 0.6941712655461858,
+    "bagging_fraction": 0.8410875419309489,
+    "min_child_samples": 82,
+    "scale_pos_weight": 115.70325582237828,
+    "reg_alpha": 5.921382310395536,
+    "reg_lambda": 1.7154865603056333,
+    "max_depth": -1,
+    "min_split_gain": 0.784424369166932,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9774097365489947,
+    "pr_auc": 0.2786583372455196,
+    "precision_at_recall_50": 0.3185840707964602,
+    "precision": 0.24669603524229075,
+    "recall": 0.9180327868852459,
+    "n_positive": 61,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 3,
+    "events_detected": 3,
+    "event_recall": 1.0
+  }
+}

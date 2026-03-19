@@ -1,0 +1,33 @@
+{
+  "settlement_point": "HB_SOUTH",
+  "n_trials": 50,
+  "best_trial": 41,
+  "best_val_pr_auc": 0.6378776170662696,
+  "best_params": {
+    "num_leaves": 122,
+    "learning_rate": 0.03299360461281117,
+    "feature_fraction": 0.7849443242352141,
+    "bagging_fraction": 0.5256401092920973,
+    "min_child_samples": 79,
+    "scale_pos_weight": 357.0956575908639,
+    "reg_alpha": 4.163208184542585,
+    "reg_lambda": 8.573167025418737,
+    "max_depth": 15,
+    "min_split_gain": 0.8235513903139218,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9722874137617091,
+    "pr_auc": 0.2733629593436651,
+    "precision_at_recall_50": 0.2696629213483146,
+    "precision": 0.10294117647058823,
+    "recall": 0.9130434782608695,
+    "n_positive": 46,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 4,
+    "events_detected": 4,
+    "event_recall": 1.0
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "settlement_point": "LZ_RAYBN",
+  "n_trials": 50,
+  "best_trial": 35,
+  "best_val_pr_auc": 0.49152383700171803,
+  "best_params": {
+    "num_leaves": 88,
+    "learning_rate": 0.029431609389425465,
+    "feature_fraction": 0.5645900046286007,
+    "bagging_fraction": 0.8789398133240791,
+    "min_child_samples": 85,
+    "scale_pos_weight": 212.09041293445097,
+    "reg_alpha": 6.694299902914172,
+    "reg_lambda": 7.743101140271907,
+    "max_depth": 7,
+    "min_split_gain": 0.3983217514053551,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9653164145788913,
+    "pr_auc": 0.3925953732464949,
+    "precision_at_recall_50": 0.4222222222222222,
+    "precision": 0.12087912087912088,
+    "recall": 0.9821428571428571,
+    "n_positive": 56,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 6,
+    "events_detected": 6,
+    "event_recall": 1.0
+  }
+}

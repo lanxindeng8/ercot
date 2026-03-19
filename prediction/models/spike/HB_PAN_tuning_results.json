@@ -1,0 +1,33 @@
+{
+  "settlement_point": "HB_PAN",
+  "n_trials": 50,
+  "best_trial": 25,
+  "best_val_pr_auc": 0.4552484181295283,
+  "best_params": {
+    "num_leaves": 94,
+    "learning_rate": 0.02593441069020136,
+    "feature_fraction": 0.6264675531153354,
+    "bagging_fraction": 0.648905077654249,
+    "min_child_samples": 22,
+    "scale_pos_weight": 300.23718005568384,
+    "reg_alpha": 0.8695167086261297,
+    "reg_lambda": 8.83625697064132,
+    "max_depth": 15,
+    "min_split_gain": 0.8684754180759017,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9892432096962616,
+    "pr_auc": 0.5440263570874619,
+    "precision_at_recall_50": 0.5185185185185185,
+    "precision": 0.21328671328671328,
+    "recall": 0.953125,
+    "n_positive": 64,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 5,
+    "events_detected": 5,
+    "event_recall": 1.0
+  }
+}

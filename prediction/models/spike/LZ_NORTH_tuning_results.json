@@ -1,0 +1,33 @@
+{
+  "settlement_point": "LZ_NORTH",
+  "n_trials": 50,
+  "best_trial": 19,
+  "best_val_pr_auc": 0.5808705278125533,
+  "best_params": {
+    "num_leaves": 105,
+    "learning_rate": 0.033295322767585046,
+    "feature_fraction": 0.9890773312259499,
+    "bagging_fraction": 0.7118339345498522,
+    "min_child_samples": 86,
+    "scale_pos_weight": 230.75768507936456,
+    "reg_alpha": 5.390065587526488,
+    "reg_lambda": 7.103824045332199,
+    "max_depth": 10,
+    "min_split_gain": 0.41547784331544,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9734576426497199,
+    "pr_auc": 0.5202943081015494,
+    "precision_at_recall_50": 0.6212121212121212,
+    "precision": 0.24497991967871485,
+    "recall": 0.8591549295774648,
+    "n_positive": 71,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 8,
+    "events_detected": 7,
+    "event_recall": 0.875
+  }
+}

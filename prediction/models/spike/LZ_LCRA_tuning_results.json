@@ -1,0 +1,33 @@
+{
+  "settlement_point": "LZ_LCRA",
+  "n_trials": 50,
+  "best_trial": 44,
+  "best_val_pr_auc": 0.6605418784719349,
+  "best_params": {
+    "num_leaves": 79,
+    "learning_rate": 0.04384188080403253,
+    "feature_fraction": 0.7744655619341495,
+    "bagging_fraction": 0.6775590779055998,
+    "min_child_samples": 99,
+    "scale_pos_weight": 254.14137652353818,
+    "reg_alpha": 8.94216920045252,
+    "reg_lambda": 9.403867809316523,
+    "max_depth": 15,
+    "min_split_gain": 0.8437614576736462,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9881820319849483,
+    "pr_auc": 0.6649330342797083,
+    "precision_at_recall_50": 0.6571428571428571,
+    "precision": 0.3411764705882353,
+    "recall": 0.9456521739130435,
+    "n_positive": 92,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 7,
+    "events_detected": 6,
+    "event_recall": 0.8571428571428571
+  }
+}

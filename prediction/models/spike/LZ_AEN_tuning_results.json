@@ -1,0 +1,33 @@
+{
+  "settlement_point": "LZ_AEN",
+  "n_trials": 50,
+  "best_trial": 41,
+  "best_val_pr_auc": 0.5409719515583701,
+  "best_params": {
+    "num_leaves": 70,
+    "learning_rate": 0.03462941195838877,
+    "feature_fraction": 0.6205961852443743,
+    "bagging_fraction": 0.6281555566078159,
+    "min_child_samples": 54,
+    "scale_pos_weight": 65.07788833231312,
+    "reg_alpha": 1.8209070414411477,
+    "reg_lambda": 4.325809525899648,
+    "max_depth": 15,
+    "min_split_gain": 0.07726509950368372,
+    "bagging_freq": 5
+  },
+  "tuned_test_metrics": {
+    "roc_auc": 0.9805014589577364,
+    "pr_auc": 0.47511142238679355,
+    "precision_at_recall_50": 0.4845360824742268,
+    "precision": 0.3125,
+    "recall": 0.898876404494382,
+    "n_positive": 89,
+    "n_total": 4344
+  },
+  "tuned_test_event": {
+    "n_events": 8,
+    "events_detected": 7,
+    "event_recall": 0.875
+  }
+}
