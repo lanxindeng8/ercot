@@ -1,0 +1,69 @@
+{
+  "settlement_point": "LZ_NORTH",
+  "val": {
+    "roc_auc": 0.9031814219934267,
+    "pr_auc": 0.1027497476132538,
+    "precision_at_recall_50": 0.12982456140350876,
+    "precision": 0.019346230820547032,
+    "recall": 0.8877551020408163,
+    "n_positive": 98,
+    "n_total": 35032,
+    "event_n_events": 10,
+    "event_events_detected": 10,
+    "event_event_recall": 1.0
+  },
+  "test": {
+    "roc_auc": 0.9553040216492026,
+    "pr_auc": 0.20989113293543293,
+    "precision_at_recall_50": 0.2181208053691275,
+    "precision": 0.1111111111111111,
+    "recall": 0.971830985915493,
+    "n_positive": 71,
+    "n_total": 4344,
+    "event_n_events": 8,
+    "event_events_detected": 8,
+    "event_event_recall": 1.0
+  },
+  "top_features": [
+    {
+      "name": "lmp_lag1",
+      "gain": 27584217.19921875
+    },
+    {
+      "name": "spread_mean_4",
+      "gain": 2406503.5
+    },
+    {
+      "name": "temp_anomaly",
+      "gain": 1864728.99609375
+    },
+    {
+      "name": "system_lambda_lag1",
+      "gain": 1624960.0
+    },
+    {
+      "name": "prc_lag1",
+      "gain": 749832.796875
+    },
+    {
+      "name": "spread_max_96",
+      "gain": 569401.69921875
+    },
+    {
+      "name": "temp_2m",
+      "gain": 502481.0
+    },
+    {
+      "name": "lmp_ramp_1h",
+      "gain": 407286.296875
+    },
+    {
+      "name": "dam_lmp_current_hour",
+      "gain": 399418.19921875
+    },
+    {
+      "name": "lmp_ramp_4h",
+      "gain": 383759.1015625
+    }
+  ]
+}

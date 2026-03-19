@@ -1,26 +1,20 @@
 {
   "version": 2,
-  "timestamp": "2026-03-19T02:00:00-05:00",
-  "state": "running",
-  "task": "spike-pred-phase0-data-fetch",
-  "task_description": "Phase 0 code done. Running actual data fetches + retrain finishing.",
+  "timestamp": "2026-03-19T12:02:00-05:00",
+  "state": "waiting_cc",
+  "task": "spike-pred-phase1-training",
+  "task_description": "CC writing spike_model.py + train_spike.py + evaluate_spike.py + tests",
   "current_step": {
-    "name": "data-fetch-all",
-    "started_at": "2026-03-19T01:49:00-05:00",
-    "on_complete": "Validate all data with 2025-12-14 case day, commit new model checkpoints"
+    "name": "cc-train-spike-gbm",
+    "on_complete": "Review diff → Codex review → run training on all 14 SPs"
   },
   "next_steps": [
-    "Wind forecast finishes (~5 min left, 2022-12 to 2026-03)",
-    "RT reserves finishes (~60 min, 424 XLSX files)",
-    "Retrain finishes (~10 min, lz_west RTM last SP)",
-    "Commit new model checkpoints",
-    "Validate 2025-12-14 case data alignment",
-    "Phase 1: Three-layer label system + feature engineering v2"
+    "Review CC output",
+    "Codex review",
+    "Run train_spike.py --all",
+    "Run evaluate_spike.py (PR-AUC + 2025-12-14 case study)",
+    "Backfill remaining data (reserves 2020-2023, wind 2025-10+)"
   ],
-  "background_processes": [
-    {"id": "retrain-15sp", "host": "local", "pid": 67347, "log": "/tmp/retrain_15sp.log"},
-    {"id": "fetch-wind-forecast", "host": "local", "session": "salty-river"},
-    {"id": "fetch-reserves", "host": "local", "pid": 3012, "log": "/tmp/fetch_reserves.log"}
-  ],
-  "commits_this_session": ["1b60038", "ca0be66", "35d0007", "698608c", "57aec0a", "345fc76", "4bb556a", "0cf4d1b"]
+  "background_processes": [{"id": "amber-coral", "host": "local", "desc": "CC writing spike training code"}],
+  "commits_this_session": ["8529b36", "c857bf6", "c8258a0", "c3fa68b", "7b2a83f"]
 }

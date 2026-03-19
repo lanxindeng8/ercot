@@ -1,0 +1,69 @@
+{
+  "settlement_point": "HB_NORTH",
+  "val": {
+    "roc_auc": 0.9483830727180268,
+    "pr_auc": 0.20671086537455868,
+    "precision_at_recall_50": 0.26455026455026454,
+    "precision": 0.023741007194244605,
+    "recall": 0.9166666666666666,
+    "n_positive": 72,
+    "n_total": 35032,
+    "event_n_events": 7,
+    "event_events_detected": 7,
+    "event_event_recall": 1.0
+  },
+  "test": {
+    "roc_auc": 0.9049238008435957,
+    "pr_auc": 0.1287346874939317,
+    "precision_at_recall_50": 0.14420062695924765,
+    "precision": 0.0725925925925926,
+    "recall": 0.8909090909090909,
+    "n_positive": 55,
+    "n_total": 4344,
+    "event_n_events": 6,
+    "event_events_detected": 6,
+    "event_event_recall": 1.0
+  },
+  "top_features": [
+    {
+      "name": "lmp_lag1",
+      "gain": 47275737.0
+    },
+    {
+      "name": "lmp_lag96",
+      "gain": 1597472.3984375
+    },
+    {
+      "name": "spread_mean_4",
+      "gain": 1488231.69921875
+    },
+    {
+      "name": "temp_anomaly",
+      "gain": 1412497.19921875
+    },
+    {
+      "name": "spread_max_96",
+      "gain": 959765.6015625
+    },
+    {
+      "name": "prc_lag1",
+      "gain": 657580.8984375
+    },
+    {
+      "name": "lmp_ramp_4h",
+      "gain": 471914.703125
+    },
+    {
+      "name": "lmp_mean_4",
+      "gain": 460199.09375
+    },
+    {
+      "name": "wind_chill",
+      "gain": 426391.8984375
+    },
+    {
+      "name": "spread_ramp_1h",
+      "gain": 413661.296875
+    }
+  ]
+}

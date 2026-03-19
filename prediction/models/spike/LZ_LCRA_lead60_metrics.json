@@ -1,0 +1,69 @@
+{
+  "settlement_point": "LZ_LCRA",
+  "val": {
+    "roc_auc": 0.9479142677649838,
+    "pr_auc": 0.35741279085667166,
+    "precision_at_recall_50": 0.47988505747126436,
+    "precision": 0.2779623477297896,
+    "recall": 0.7537537537537538,
+    "n_positive": 333,
+    "n_total": 35032,
+    "event_n_events": 27,
+    "event_events_detected": 24,
+    "event_event_recall": 0.8888888888888888
+  },
+  "test": {
+    "roc_auc": 0.9257344369912879,
+    "pr_auc": 0.3928551043894399,
+    "precision_at_recall_50": 0.5568181818181818,
+    "precision": 0.472,
+    "recall": 0.6413043478260869,
+    "n_positive": 92,
+    "n_total": 4344,
+    "event_n_events": 7,
+    "event_events_detected": 6,
+    "event_event_recall": 0.8571428571428571
+  },
+  "top_features": [
+    {
+      "name": "lmp_lag1",
+      "gain": 21064262.28438568
+    },
+    {
+      "name": "spread_mean_4",
+      "gain": 1850785.4068107605
+    },
+    {
+      "name": "lmp_mean_4",
+      "gain": 1047810.0633430481
+    },
+    {
+      "name": "spread_max_96",
+      "gain": 887000.6449222565
+    },
+    {
+      "name": "spread_ramp_1h",
+      "gain": 619426.1163578033
+    },
+    {
+      "name": "wind_speed_10m",
+      "gain": 548152.2382946014
+    },
+    {
+      "name": "lmp_ramp_4h",
+      "gain": 466319.13036346436
+    },
+    {
+      "name": "wind_chill",
+      "gain": 402493.96144104004
+    },
+    {
+      "name": "prc_mean_1h",
+      "gain": 374990.8280067444
+    },
+    {
+      "name": "lmp_mean_96",
+      "gain": 346350.0968875885
+    }
+  ]
+}
