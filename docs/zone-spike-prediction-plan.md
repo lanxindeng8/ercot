@@ -68,11 +68,19 @@
 
 ### 天气数据方案对比
 
+**现有基础**: Wind 模型已有 HRRR 数据管道 (`prediction/models/wind/scripts/fetch_hrrr_herbie.py`)
+- 用 Herbie 库从 AWS 下载 HRRR GRIB2
+- 提取 u/v 风速 (10m, 80m), 2m 温度, 地表气压
+- 但只有 Texas bounding box 空间平均，不是 zone-level 点位
+- 数据只有 ~6 个月 (2024 下半年)
+
 | 方案 | 优势 | 劣势 | 推荐 |
 |------|------|------|------|
-| **Open-Meteo API** | 免费、REST、历史 archive、JSON | 分辨率 ~11km（GFS）| ✅ MVP 阶段用这个 |
-| **HRRR via Herbie** | 3km 分辨率、官方 NOAA | 需下载 GRIB2 大文件、计算资源 | 后续升级 |
-| **NOAA Weather API** | 官方、稳定 | 只有 forecast 不好拿 historical | ❌ |
+| **HRRR via Herbie (扩展现有)** | 3km 分辨率、已有管道、可提取点位 | 历史回填慢（每文件 ~50MB） | ✅ 主方案 — 复用 wind 模型管道 |
+| **Open-Meteo API** | 免费、REST、历史 archive 完整 | 分辨率 ~11km | ✅ 补充方案 — 用于快速获取长历史 |
+| **NOAA Weather API** | 官方 | 不好拿 historical | ❌ |
+
+**策略**: Open-Meteo 先跑（快速获取 2015-2026 全历史），HRRR 点位提取做高精度补充。
 
 **天气测站选择** (对应文档提到的 Zone-level)：
 - LZ_CPS → San Antonio (29.42°N, 98.49°W)
