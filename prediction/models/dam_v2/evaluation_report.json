@@ -1,655 +1,1636 @@
 {
-  "hb_west": {
-    "settlement_point": "hb_west",
+  "hb_busavg": {
+    "settlement_point": "hb_busavg",
     "naive_baseline_val": {
-      "mae": 18.549,
-      "rmse": 75.8087,
-      "mape_pct": 106.41,
-      "directional_accuracy_pct": 77.83
+      "mae": 14.2805,
+      "rmse": 72.0253,
+      "mape_pct": 49.08,
+      "directional_accuracy_pct": 80.7
     },
     "catboost": {
       "best_params": {
-        "iterations": 1186,
-        "depth": 5,
-        "learning_rate": 0.06955569959268577,
-        "l2_leaf_reg": 9.164820010397921,
-        "subsample": 0.7806364267441137,
-        "random_strength": 2.830037831549867,
+        "iterations": 501,
+        "depth": 6,
+        "learning_rate": 0.11216811591904177,
+        "l2_leaf_reg": 7.057372804768574,
+        "subsample": 0.938217131318914,
+        "random_strength": 3.3513916618538357,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 4.6919,
-        "rmse": 23.4877,
-        "mape_pct": 16.84,
-        "directional_accuracy_pct": 80.35
+        "mae": 6.6808,
+        "rmse": 41.982,
+        "mape_pct": 16.67,
+        "directional_accuracy_pct": 76.15
       },
       "test_metrics": {
-        "mae": 8.9286,
-        "rmse": 31.8179,
-        "mape_pct": 25.16,
-        "directional_accuracy_pct": 75.38
+        "mae": 11.2292,
+        "rmse": 83.3472,
+        "mape_pct": 24.42,
+        "directional_accuracy_pct": 74.82
       },
-      "tuning_seconds": 469.6
+      "tuning_seconds": 190.2
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 2659,
-        "max_depth": 10,
-        "learning_rate": 0.016878524117883643,
-        "num_leaves": 197,
-        "min_child_samples": 54,
-        "reg_alpha": 2.0488655052867326,
-        "reg_lambda": 9.628739471195635,
-        "subsample": 0.6277990401824793,
-        "colsample_bytree": 0.9451803392437244,
+        "n_estimators": 2528,
+        "max_depth": 6,
+        "learning_rate": 0.022909443999609046,
+        "num_leaves": 76,
+        "min_child_samples": 26,
+        "reg_alpha": 0.5219140173110081,
+        "reg_lambda": 3.426400375569963,
+        "subsample": 0.9471507610165607,
+        "colsample_bytree": 0.8116087491971826,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 4.0748,
-        "rmse": 20.3061,
-        "mape_pct": 15.78,
-        "directional_accuracy_pct": 81.68
+        "mae": 5.6071,
+        "rmse": 37.0982,
+        "mape_pct": 14.37,
+        "directional_accuracy_pct": 79.73
       },
       "test_metrics": {
-        "mae": 8.3121,
-        "rmse": 39.3245,
-        "mape_pct": 22.57,
-        "directional_accuracy_pct": 76.51
+        "mae": 8.3477,
+        "rmse": 30.2885,
+        "mape_pct": 21.0,
+        "directional_accuracy_pct": 74.57
       },
-      "tuning_seconds": 1677.8
+      "tuning_seconds": 585.8
     },
     "best_model": "lightgbm",
-    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_west_lightgbm.joblib",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_busavg_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 40957.0
-      },
-      {
-        "feature": "dam_rtm_spread",
-        "importance": 20337.0
-      },
-      {
-        "feature": "month",
-        "importance": 19241.0
+        "importance": 10955.0
       },
       {
         "feature": "dam_lag_1h",
-        "importance": 19050.0
+        "importance": 4097.0
       },
       {
-        "feature": "rtm_lag_1h",
-        "importance": 15323.0
-      },
-      {
-        "feature": "wind_ramp_1h",
-        "importance": 12436.0
+        "feature": "month",
+        "importance": 3841.0
       },
       {
         "feature": "gas_ramp_1h",
-        "importance": 11807.0
+        "importance": 3100.0
       },
       {
-        "feature": "rrs",
-        "importance": 10303.0
+        "feature": "dam_lag_24h",
+        "importance": 2762.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 2344.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 2233.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 2164.0
       },
       {
         "feature": "wind_ramp_4h",
-        "importance": 10234.0
+        "importance": 2150.0
       },
       {
-        "feature": "day_of_week",
-        "importance": 9542.0
+        "feature": "regup_lag_24h",
+        "importance": 2130.0
       }
     ]
   },
   "hb_houston": {
     "settlement_point": "hb_houston",
     "naive_baseline_val": {
-      "mae": 13.5056,
-      "rmse": 70.8195,
-      "mape_pct": 40.39,
+      "mae": 13.5051,
+      "rmse": 70.8234,
+      "mape_pct": 40.38,
       "directional_accuracy_pct": 81.18
     },
     "catboost": {
       "best_params": {
-        "iterations": 2025,
+        "iterations": 1429,
         "depth": 5,
-        "learning_rate": 0.022063982476059674,
-        "l2_leaf_reg": 7.769741963235731,
-        "subsample": 0.7479290192413232,
-        "random_strength": 2.945616680252523,
+        "learning_rate": 0.03244799577342669,
+        "l2_leaf_reg": 3.5159988330169663,
+        "subsample": 0.6051016340993349,
+        "random_strength": 2.9175296154620933,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 4.0516,
-        "rmse": 22.9652,
-        "mape_pct": 11.31,
-        "directional_accuracy_pct": 81.92
+        "mae": 6.315,
+        "rmse": 37.9004,
+        "mape_pct": 14.52,
+        "directional_accuracy_pct": 77.59
       },
       "test_metrics": {
-        "mae": 7.9948,
-        "rmse": 28.1823,
-        "mape_pct": 18.96,
-        "directional_accuracy_pct": 77.3
+        "mae": 10.8615,
+        "rmse": 50.3475,
+        "mape_pct": 21.49,
+        "directional_accuracy_pct": 75.72
       },
-      "tuning_seconds": 750.1
+      "tuning_seconds": 283.0
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 2932,
-        "max_depth": 10,
-        "learning_rate": 0.01059861891515491,
-        "num_leaves": 184,
-        "min_child_samples": 44,
-        "reg_alpha": 4.648463555825739,
-        "reg_lambda": 3.284252893016702,
-        "subsample": 0.6010371504675106,
-        "colsample_bytree": 0.8561973519636026,
+        "n_estimators": 2248,
+        "max_depth": 6,
+        "learning_rate": 0.056375371948784954,
+        "num_leaves": 47,
+        "min_child_samples": 39,
+        "reg_alpha": 5.021199100012151,
+        "reg_lambda": 3.493394291096109,
+        "subsample": 0.6977028386686107,
+        "colsample_bytree": 0.8029830619728556,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 3.3113,
-        "rmse": 17.7885,
-        "mape_pct": 10.42,
-        "directional_accuracy_pct": 83.25
+        "mae": 5.3664,
+        "rmse": 35.8328,
+        "mape_pct": 12.91,
+        "directional_accuracy_pct": 79.71
       },
       "test_metrics": {
-        "mae": 6.574,
-        "rmse": 25.9442,
-        "mape_pct": 16.34,
-        "directional_accuracy_pct": 77.13
+        "mae": 6.2694,
+        "rmse": 29.1937,
+        "mape_pct": 15.32,
+        "directional_accuracy_pct": 75.43
       },
-      "tuning_seconds": 1654.8
+      "tuning_seconds": 216.8
     },
     "best_model": "lightgbm",
     "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_houston_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 41798.0
-      },
-      {
-        "feature": "dam_rtm_spread",
-        "importance": 25159.0
-      },
-      {
-        "feature": "dam_lag_1h",
-        "importance": 22724.0
+        "importance": 5386.0
       },
       {
         "feature": "month",
-        "importance": 19965.0
+        "importance": 2035.0
       },
       {
-        "feature": "rtm_lag_1h",
-        "importance": 19638.0
-      },
-      {
-        "feature": "gas_ramp_1h",
-        "importance": 14215.0
+        "feature": "dam_lag_1h",
+        "importance": 1732.0
       },
       {
         "feature": "dam_lag_24h",
-        "importance": 11865.0
+        "importance": 1303.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 1196.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 975.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 969.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 924.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 886.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 874.0
+      }
+    ]
+  },
+  "hb_hubavg": {
+    "settlement_point": "hb_hubavg",
+    "naive_baseline_val": {
+      "mae": 14.6917,
+      "rmse": 71.9152,
+      "mape_pct": 51.52,
+      "directional_accuracy_pct": 80.83
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 1760,
+        "depth": 8,
+        "learning_rate": 0.022921761983143805,
+        "l2_leaf_reg": 2.234326352884631,
+        "subsample": 0.6342857494993418,
+        "random_strength": 2.0429647886012177,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.5199,
+        "rmse": 38.0029,
+        "mape_pct": 16.64,
+        "directional_accuracy_pct": 78.4
+      },
+      "test_metrics": {
+        "mae": 18.9011,
+        "rmse": 74.2354,
+        "mape_pct": 33.19,
+        "directional_accuracy_pct": 75.89
+      },
+      "tuning_seconds": 490.8
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2069,
+        "max_depth": 6,
+        "learning_rate": 0.06018508367029935,
+        "num_leaves": 189,
+        "min_child_samples": 16,
+        "reg_alpha": 1.2602862038583997,
+        "reg_lambda": 0.10204638523688381,
+        "subsample": 0.983904799302034,
+        "colsample_bytree": 0.6858169156351255,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 5.5526,
+        "rmse": 36.1926,
+        "mape_pct": 14.46,
+        "directional_accuracy_pct": 79.81
+      },
+      "test_metrics": {
+        "mae": 11.0336,
+        "rmse": 32.1231,
+        "mape_pct": 28.39,
+        "directional_accuracy_pct": 74.88
+      },
+      "tuning_seconds": 534.0
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_hubavg_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 4402.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 1893.0
+      },
+      {
+        "feature": "month",
+        "importance": 1646.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 1457.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 1335.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1244.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 1096.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 1090.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 1056.0
       },
       {
         "feature": "wind_ramp_1h",
-        "importance": 11857.0
-      },
-      {
-        "feature": "rrs",
-        "importance": 10998.0
-      },
-      {
-        "feature": "reg_spread",
-        "importance": 10469.0
+        "importance": 1048.0
       }
     ]
   },
   "hb_north": {
     "settlement_point": "hb_north",
     "naive_baseline_val": {
-      "mae": 14.2142,
-      "rmse": 73.1973,
-      "mape_pct": 47.39,
-      "directional_accuracy_pct": 79.41
+      "mae": 14.2143,
+      "rmse": 73.2014,
+      "mape_pct": 47.38,
+      "directional_accuracy_pct": 79.4
     },
     "catboost": {
       "best_params": {
-        "iterations": 2589,
-        "depth": 4,
-        "learning_rate": 0.1568508463034027,
-        "l2_leaf_reg": 2.6763366321649427,
-        "subsample": 0.8439617492279924,
-        "random_strength": 1.338867901143645,
+        "iterations": 2260,
+        "depth": 10,
+        "learning_rate": 0.01126199191944876,
+        "l2_leaf_reg": 4.326675765607653,
+        "subsample": 0.9943243566689156,
+        "random_strength": 3.843549757266241,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 4.1109,
-        "rmse": 26.8015,
-        "mape_pct": 11.66,
-        "directional_accuracy_pct": 80.49
+        "mae": 6.3771,
+        "rmse": 37.9223,
+        "mape_pct": 17.35,
+        "directional_accuracy_pct": 77.45
       },
       "test_metrics": {
-        "mae": 10.4695,
-        "rmse": 57.4971,
-        "mape_pct": 21.09,
-        "directional_accuracy_pct": 76.04
+        "mae": 10.0983,
+        "rmse": 40.9532,
+        "mape_pct": 25.82,
+        "directional_accuracy_pct": 73.93
       },
-      "tuning_seconds": 449.8
+      "tuning_seconds": 1204.5
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 1433,
+        "n_estimators": 2505,
         "max_depth": 7,
-        "learning_rate": 0.04183531146725763,
+        "learning_rate": 0.013997025058794226,
         "num_leaves": 106,
-        "min_child_samples": 74,
-        "reg_alpha": 6.361133860706317,
-        "reg_lambda": 1.3906725163835651,
-        "subsample": 0.9212843988319216,
-        "colsample_bytree": 0.8658421514047129,
+        "min_child_samples": 14,
+        "reg_alpha": 8.002475843972507,
+        "reg_lambda": 8.982169995252738,
+        "subsample": 0.677573574111694,
+        "colsample_bytree": 0.7785783790935122,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 3.7184,
-        "rmse": 24.7529,
-        "mape_pct": 11.34,
-        "directional_accuracy_pct": 82.16
+        "mae": 5.7519,
+        "rmse": 38.9317,
+        "mape_pct": 15.27,
+        "directional_accuracy_pct": 79.33
       },
       "test_metrics": {
-        "mae": 13.0848,
-        "rmse": 41.5786,
-        "mape_pct": 31.75,
-        "directional_accuracy_pct": 74.93
+        "mae": 10.0914,
+        "rmse": 32.8263,
+        "mape_pct": 26.93,
+        "directional_accuracy_pct": 73.59
       },
-      "tuning_seconds": 463.8
+      "tuning_seconds": 533.7
     },
     "best_model": "lightgbm",
     "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_north_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 11431.0
-      },
-      {
-        "feature": "dam_rtm_spread",
-        "importance": 5177.0
-      },
-      {
-        "feature": "dam_lag_1h",
-        "importance": 5165.0
+        "importance": 18652.0
       },
       {
         "feature": "month",
-        "importance": 5027.0
+        "importance": 8140.0
       },
       {
-        "feature": "rtm_lag_1h",
-        "importance": 4089.0
+        "feature": "dam_lag_1h",
+        "importance": 6904.0
       },
       {
         "feature": "gas_ramp_1h",
-        "importance": 3104.0
-      },
-      {
-        "feature": "wind_ramp_1h",
-        "importance": 2463.0
+        "importance": 6221.0
       },
       {
         "feature": "dam_lag_24h",
-        "importance": 2432.0
+        "importance": 4903.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 4671.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 4602.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 4300.0
+      },
+      {
+        "feature": "regup_lag_24h",
+        "importance": 4237.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 4217.0
+      }
+    ]
+  },
+  "hb_pan": {
+    "settlement_point": "hb_pan",
+    "naive_baseline_val": {
+      "mae": 19.3009,
+      "rmse": 75.7489,
+      "mape_pct": 145.98,
+      "directional_accuracy_pct": 71.98
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2964,
+        "depth": 4,
+        "learning_rate": 0.04001175494290016,
+        "l2_leaf_reg": 6.326856987127979,
+        "subsample": 0.8446596548878343,
+        "random_strength": 0.5552190888811522,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.1283,
+        "rmse": 35.2998,
+        "mape_pct": 27.93,
+        "directional_accuracy_pct": 71.86
+      },
+      "test_metrics": {
+        "mae": 7.5965,
+        "rmse": 27.5831,
+        "mape_pct": 33.22,
+        "directional_accuracy_pct": 71.83
+      },
+      "tuning_seconds": 451.6
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2537,
+        "max_depth": 6,
+        "learning_rate": 0.023445375391677906,
+        "num_leaves": 250,
+        "min_child_samples": 75,
+        "reg_alpha": 3.805584053404144,
+        "reg_lambda": 2.5724610791715463,
+        "subsample": 0.9037754386258371,
+        "colsample_bytree": 0.811527433834947,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 5.8052,
+        "rmse": 31.8496,
+        "mape_pct": 27.16,
+        "directional_accuracy_pct": 73.55
+      },
+      "test_metrics": {
+        "mae": 7.4128,
+        "rmse": 32.1002,
+        "mape_pct": 30.25,
+        "directional_accuracy_pct": 72.61
+      },
+      "tuning_seconds": 670.9
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_pan_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 10592.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 4075.0
+      },
+      {
+        "feature": "month",
+        "importance": 3704.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 2444.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 2239.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 2231.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 2109.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 2046.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 1948.0
       },
       {
         "feature": "day_of_week",
-        "importance": 2398.0
-      },
-      {
-        "feature": "rrs",
-        "importance": 2395.0
+        "importance": 1947.0
       }
     ]
   },
   "hb_south": {
     "settlement_point": "hb_south",
     "naive_baseline_val": {
-      "mae": 13.7539,
-      "rmse": 68.5943,
-      "mape_pct": 45.3,
+      "mae": 13.7531,
+      "rmse": 68.598,
+      "mape_pct": 45.29,
       "directional_accuracy_pct": 79.71
     },
     "catboost": {
       "best_params": {
-        "iterations": 1306,
-        "depth": 4,
-        "learning_rate": 0.07775769379034574,
-        "l2_leaf_reg": 2.6296210273775302,
-        "subsample": 0.864623270760753,
-        "random_strength": 3.9074720823542273,
+        "iterations": 2617,
+        "depth": 6,
+        "learning_rate": 0.08023705462457395,
+        "l2_leaf_reg": 7.910182640158096,
+        "subsample": 0.9748430501812314,
+        "random_strength": 4.1426475459516245,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 4.048,
-        "rmse": 27.8347,
-        "mape_pct": 10.95,
-        "directional_accuracy_pct": 81.34
+        "mae": 6.5,
+        "rmse": 36.3824,
+        "mape_pct": 16.87,
+        "directional_accuracy_pct": 76.27
       },
       "test_metrics": {
-        "mae": 9.008,
-        "rmse": 34.9714,
-        "mape_pct": 20.7,
-        "directional_accuracy_pct": 77.27
+        "mae": 8.9557,
+        "rmse": 38.8488,
+        "mape_pct": 21.54,
+        "directional_accuracy_pct": 75.43
       },
-      "tuning_seconds": 489.2
+      "tuning_seconds": 224.4
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 1143,
+        "n_estimators": 1368,
         "max_depth": 8,
-        "learning_rate": 0.1472556677423068,
-        "num_leaves": 59,
-        "min_child_samples": 68,
-        "reg_alpha": 4.687807224510397,
-        "reg_lambda": 4.498331818345285,
-        "subsample": 0.8807708438956047,
-        "colsample_bytree": 0.7063897102201654,
+        "learning_rate": 0.12122296104142596,
+        "num_leaves": 238,
+        "min_child_samples": 42,
+        "reg_alpha": 8.478625836351876,
+        "reg_lambda": 3.1115810987650683,
+        "subsample": 0.8491793791237897,
+        "colsample_bytree": 0.953462180136371,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 3.4109,
-        "rmse": 19.7327,
-        "mape_pct": 10.22,
-        "directional_accuracy_pct": 81.67
+        "mae": 5.6085,
+        "rmse": 36.1724,
+        "mape_pct": 13.73,
+        "directional_accuracy_pct": 78.29
       },
       "test_metrics": {
-        "mae": 7.6911,
-        "rmse": 23.8521,
-        "mape_pct": 19.66,
-        "directional_accuracy_pct": 76.11
+        "mae": 6.7935,
+        "rmse": 28.6928,
+        "mape_pct": 16.38,
+        "directional_accuracy_pct": 74.62
       },
-      "tuning_seconds": 665.0
+      "tuning_seconds": 549.3
     },
     "best_model": "lightgbm",
     "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_south_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 3908.0
-      },
-      {
-        "feature": "dam_lag_1h",
-        "importance": 1992.0
+        "importance": 9373.0
       },
       {
         "feature": "month",
-        "importance": 1741.0
+        "importance": 4335.0
       },
       {
-        "feature": "dam_rtm_spread",
-        "importance": 1594.0
+        "feature": "wind_ramp_1h",
+        "importance": 3003.0
       },
       {
-        "feature": "rtm_lag_1h",
-        "importance": 1345.0
+        "feature": "dam_lag_1h",
+        "importance": 2965.0
       },
       {
-        "feature": "dam_lag_24h",
-        "importance": 1095.0
+        "feature": "wind_ramp_4h",
+        "importance": 2915.0
       },
       {
         "feature": "gas_ramp_1h",
-        "importance": 1033.0
+        "importance": 2876.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 2724.0
       },
       {
         "feature": "day_of_week",
-        "importance": 911.0
+        "importance": 2474.0
       },
       {
-        "feature": "rrs",
-        "importance": 889.0
+        "feature": "dam_lag_24h",
+        "importance": 2448.0
       },
       {
-        "feature": "reg_spread",
-        "importance": 869.0
+        "feature": "dam_lag_168h",
+        "importance": 2296.0
+      }
+    ]
+  },
+  "hb_west": {
+    "settlement_point": "hb_west",
+    "naive_baseline_val": {
+      "mae": 18.5446,
+      "rmse": 75.8106,
+      "mape_pct": 106.41,
+      "directional_accuracy_pct": 77.84
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2110,
+        "depth": 9,
+        "learning_rate": 0.018838755820837237,
+        "l2_leaf_reg": 2.952658594353052,
+        "subsample": 0.8359559616269808,
+        "random_strength": 1.762380014588135,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.8784,
+        "rmse": 37.7594,
+        "mape_pct": 20.99,
+        "directional_accuracy_pct": 77.53
+      },
+      "test_metrics": {
+        "mae": 19.034,
+        "rmse": 63.9982,
+        "mape_pct": 45.67,
+        "directional_accuracy_pct": 73.48
+      },
+      "tuning_seconds": 1449.2
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 1431,
+        "max_depth": 7,
+        "learning_rate": 0.07015581356741467,
+        "num_leaves": 47,
+        "min_child_samples": 56,
+        "reg_alpha": 9.88492503227017,
+        "reg_lambda": 5.359584247279791,
+        "subsample": 0.7037534479735387,
+        "colsample_bytree": 0.7019455873752897,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 6.3658,
+        "rmse": 38.8758,
+        "mape_pct": 19.52,
+        "directional_accuracy_pct": 78.14
+      },
+      "test_metrics": {
+        "mae": 8.3597,
+        "rmse": 31.6498,
+        "mape_pct": 26.3,
+        "directional_accuracy_pct": 73.75
+      },
+      "tuning_seconds": 439.1
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/hb_west_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 6913.0
+      },
+      {
+        "feature": "month",
+        "importance": 3072.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 2010.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 1565.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 1414.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 1403.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1376.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 1279.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 1278.0
+      },
+      {
+        "feature": "regup_lag_24h",
+        "importance": 1207.0
+      }
+    ]
+  },
+  "lz_aen": {
+    "settlement_point": "lz_aen",
+    "naive_baseline_val": {
+      "mae": 14.9687,
+      "rmse": 75.7138,
+      "mape_pct": 41.7,
+      "directional_accuracy_pct": 80.8
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2054,
+        "depth": 6,
+        "learning_rate": 0.06061612333849916,
+        "l2_leaf_reg": 8.16950493836523,
+        "subsample": 0.7273375487848277,
+        "random_strength": 3.009979170447198,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 7.0345,
+        "rmse": 49.0075,
+        "mape_pct": 14.5,
+        "directional_accuracy_pct": 77.79
+      },
+      "test_metrics": {
+        "mae": 21.7769,
+        "rmse": 84.6466,
+        "mape_pct": 50.57,
+        "directional_accuracy_pct": 75.53
+      },
+      "tuning_seconds": 446.4
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2408,
+        "max_depth": 5,
+        "learning_rate": 0.029260969133691896,
+        "num_leaves": 105,
+        "min_child_samples": 5,
+        "reg_alpha": 7.681597537714217,
+        "reg_lambda": 4.977281885696227,
+        "subsample": 0.9649154086260281,
+        "colsample_bytree": 0.7138378828364653,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 6.2306,
+        "rmse": 42.7496,
+        "mape_pct": 13.23,
+        "directional_accuracy_pct": 79.54
+      },
+      "test_metrics": {
+        "mae": 8.5429,
+        "rmse": 36.7447,
+        "mape_pct": 18.68,
+        "directional_accuracy_pct": 76.97
+      },
+      "tuning_seconds": 420.8
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_aen_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 8487.0
+      },
+      {
+        "feature": "month",
+        "importance": 3320.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 2840.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 2030.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 1941.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 1471.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1433.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 1424.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 1354.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 1308.0
+      }
+    ]
+  },
+  "lz_cps": {
+    "settlement_point": "lz_cps",
+    "naive_baseline_val": {
+      "mae": 15.061,
+      "rmse": 76.5679,
+      "mape_pct": 41.25,
+      "directional_accuracy_pct": 80.32
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2080,
+        "depth": 6,
+        "learning_rate": 0.023325588835304625,
+        "l2_leaf_reg": 7.879121605965519,
+        "subsample": 0.8459863014712199,
+        "random_strength": 4.082354444453752,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.7743,
+        "rmse": 43.797,
+        "mape_pct": 13.95,
+        "directional_accuracy_pct": 78.18
+      },
+      "test_metrics": {
+        "mae": 10.2215,
+        "rmse": 45.7529,
+        "mape_pct": 19.05,
+        "directional_accuracy_pct": 76.97
+      },
+      "tuning_seconds": 360.0
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2571,
+        "max_depth": 6,
+        "learning_rate": 0.014610767525943223,
+        "num_leaves": 207,
+        "min_child_samples": 95,
+        "reg_alpha": 3.725677388290432,
+        "reg_lambda": 6.464187911599114,
+        "subsample": 0.8327849388629093,
+        "colsample_bytree": 0.6345826965696023,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 6.4694,
+        "rmse": 38.645,
+        "mape_pct": 13.4,
+        "directional_accuracy_pct": 79.66
+      },
+      "test_metrics": {
+        "mae": 10.389,
+        "rmse": 36.4353,
+        "mape_pct": 21.25,
+        "directional_accuracy_pct": 77.27
+      },
+      "tuning_seconds": 355.7
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_cps_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 12372.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 5745.0
+      },
+      {
+        "feature": "month",
+        "importance": 5305.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 3042.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 2918.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 2608.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 2494.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 2394.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 2194.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 2080.0
+      }
+    ]
+  },
+  "lz_houston": {
+    "settlement_point": "lz_houston",
+    "naive_baseline_val": {
+      "mae": 13.5685,
+      "rmse": 70.7018,
+      "mape_pct": 40.35,
+      "directional_accuracy_pct": 81.09
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2342,
+        "depth": 5,
+        "learning_rate": 0.03073172226530144,
+        "l2_leaf_reg": 3.393423126567817,
+        "subsample": 0.6618118080899006,
+        "random_strength": 3.3970747747447394,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.3259,
+        "rmse": 40.8903,
+        "mape_pct": 15.14,
+        "directional_accuracy_pct": 77.21
+      },
+      "test_metrics": {
+        "mae": 13.1628,
+        "rmse": 55.2704,
+        "mape_pct": 28.02,
+        "directional_accuracy_pct": 75.39
+      },
+      "tuning_seconds": 320.4
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2999,
+        "max_depth": 5,
+        "learning_rate": 0.018710659954277058,
+        "num_leaves": 174,
+        "min_child_samples": 25,
+        "reg_alpha": 6.61060377882931,
+        "reg_lambda": 0.49337270552182827,
+        "subsample": 0.7727166992024943,
+        "colsample_bytree": 0.9760481971743068,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 5.5514,
+        "rmse": 38.8396,
+        "mape_pct": 13.29,
+        "directional_accuracy_pct": 79.32
+      },
+      "test_metrics": {
+        "mae": 6.1334,
+        "rmse": 25.0948,
+        "mape_pct": 16.31,
+        "directional_accuracy_pct": 75.86
+      },
+      "tuning_seconds": 500.7
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_houston_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 12443.0
+      },
+      {
+        "feature": "month",
+        "importance": 4156.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 3926.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 2729.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 2684.0
+      },
+      {
+        "feature": "solar_pct",
+        "importance": 1896.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1886.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 1707.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 1698.0
+      },
+      {
+        "feature": "nuclear_gen_mw",
+        "importance": 1461.0
       }
     ]
   },
   "lz_lcra": {
     "settlement_point": "lz_lcra",
     "naive_baseline_val": {
-      "mae": 15.8794,
-      "rmse": 78.9739,
+      "mae": 15.8788,
+      "rmse": 78.9782,
       "mape_pct": 42.1,
       "directional_accuracy_pct": 81.24
     },
     "catboost": {
       "best_params": {
-        "iterations": 2116,
-        "depth": 4,
-        "learning_rate": 0.12005613965480907,
-        "l2_leaf_reg": 9.979274165796024,
-        "subsample": 0.9823042327415297,
-        "random_strength": 3.2326413713830853,
+        "iterations": 1806,
+        "depth": 9,
+        "learning_rate": 0.01970893961888459,
+        "l2_leaf_reg": 4.148997999648718,
+        "subsample": 0.6952279994653195,
+        "random_strength": 3.4034468991851266,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 4.7475,
-        "rmse": 33.1015,
-        "mape_pct": 14.35,
-        "directional_accuracy_pct": 82.73
+        "mae": 7.5776,
+        "rmse": 39.6735,
+        "mape_pct": 16.12,
+        "directional_accuracy_pct": 78.14
       },
       "test_metrics": {
-        "mae": 10.9299,
-        "rmse": 37.6419,
-        "mape_pct": 21.95,
-        "directional_accuracy_pct": 77.53
+        "mae": 14.0395,
+        "rmse": 49.1627,
+        "mape_pct": 29.27,
+        "directional_accuracy_pct": 75.26
       },
-      "tuning_seconds": 1006.7
+      "tuning_seconds": 905.4
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 1354,
-        "max_depth": 10,
-        "learning_rate": 0.03069430111233159,
-        "num_leaves": 246,
-        "min_child_samples": 46,
-        "reg_alpha": 7.981145259623955,
-        "reg_lambda": 9.877552588686013,
-        "subsample": 0.6245647171048638,
-        "colsample_bytree": 0.6549712098853576,
+        "n_estimators": 2719,
+        "max_depth": 8,
+        "learning_rate": 0.054963202073741446,
+        "num_leaves": 75,
+        "min_child_samples": 31,
+        "reg_alpha": 6.278742409972817,
+        "reg_lambda": 6.770823729148596,
+        "subsample": 0.818890012434406,
+        "colsample_bytree": 0.924744291648487,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 4.5056,
-        "rmse": 25.7536,
-        "mape_pct": 10.93,
-        "directional_accuracy_pct": 84.14
+        "mae": 6.3953,
+        "rmse": 41.6396,
+        "mape_pct": 12.9,
+        "directional_accuracy_pct": 80.08
       },
       "test_metrics": {
-        "mae": 9.9889,
-        "rmse": 43.8143,
-        "mape_pct": 19.74,
-        "directional_accuracy_pct": 77.85
+        "mae": 8.1446,
+        "rmse": 32.8284,
+        "mape_pct": 17.13,
+        "directional_accuracy_pct": 77.34
       },
-      "tuning_seconds": 719.1
+      "tuning_seconds": 679.1
     },
     "best_model": "lightgbm",
     "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_lcra_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 18549.0
+        "importance": 9987.0
       },
       {
         "feature": "month",
-        "importance": 10916.0
-      },
-      {
-        "feature": "dam_rtm_spread",
-        "importance": 10579.0
+        "importance": 4422.0
       },
       {
         "feature": "dam_lag_1h",
-        "importance": 10026.0
-      },
-      {
-        "feature": "rtm_lag_1h",
-        "importance": 8419.0
+        "importance": 2690.0
       },
       {
         "feature": "gas_ramp_1h",
-        "importance": 7716.0
+        "importance": 2349.0
       },
       {
-        "feature": "wind_ramp_1h",
-        "importance": 6839.0
-      },
-      {
-        "feature": "rrs",
-        "importance": 6438.0
-      },
-      {
-        "feature": "wind_ramp_4h",
-        "importance": 6414.0
+        "feature": "day_of_week",
+        "importance": 2283.0
       },
       {
         "feature": "dam_lag_24h",
-        "importance": 6371.0
+        "importance": 2227.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 2049.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1998.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 1984.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 1764.0
       }
     ]
   },
-  "lz_west": {
-    "settlement_point": "lz_west",
+  "lz_north": {
+    "settlement_point": "lz_north",
     "naive_baseline_val": {
-      "mae": 22.0997,
-      "rmse": 78.1936,
-      "mape_pct": 101.05,
-      "directional_accuracy_pct": 75.31
+      "mae": 14.4894,
+      "rmse": 73.7009,
+      "mape_pct": 47.4,
+      "directional_accuracy_pct": 79.8
     },
     "catboost": {
       "best_params": {
-        "iterations": 2217,
-        "depth": 5,
-        "learning_rate": 0.057609374215308165,
-        "l2_leaf_reg": 3.0946738873938937,
-        "subsample": 0.7808762004526417,
-        "random_strength": 0.6491391909967683,
+        "iterations": 2241,
+        "depth": 9,
+        "learning_rate": 0.015249371290901792,
+        "l2_leaf_reg": 9.267716500619974,
+        "subsample": 0.7540820268647659,
+        "random_strength": 4.210578062416519,
         "loss_function": "MAE",
         "verbose": 0,
         "random_seed": 42,
         "allow_writing_files": false
       },
       "val_metrics": {
-        "mae": 5.5129,
-        "rmse": 30.6939,
-        "mape_pct": 15.68,
-        "directional_accuracy_pct": 78.44
+        "mae": 6.7149,
+        "rmse": 39.5631,
+        "mape_pct": 17.2,
+        "directional_accuracy_pct": 76.93
       },
       "test_metrics": {
-        "mae": 8.9892,
-        "rmse": 31.26,
-        "mape_pct": 22.19,
-        "directional_accuracy_pct": 73.5
+        "mae": 14.8094,
+        "rmse": 54.669,
+        "mape_pct": 33.76,
+        "directional_accuracy_pct": 74.73
       },
-      "tuning_seconds": 821.2
+      "tuning_seconds": 1105.5
     },
     "lightgbm": {
       "best_params": {
-        "n_estimators": 1292,
-        "max_depth": 5,
-        "learning_rate": 0.10184913825045136,
-        "num_leaves": 233,
-        "min_child_samples": 30,
-        "reg_alpha": 8.146303743395688,
-        "reg_lambda": 7.195651831834676,
-        "subsample": 0.7243294921999208,
-        "colsample_bytree": 0.9346988345514416,
+        "n_estimators": 1139,
+        "max_depth": 9,
+        "learning_rate": 0.03288719795054398,
+        "num_leaves": 181,
+        "min_child_samples": 22,
+        "reg_alpha": 3.6269153943485652,
+        "reg_lambda": 2.98083007820581,
+        "subsample": 0.764102626801166,
+        "colsample_bytree": 0.7706996811801357,
         "objective": "mae",
         "random_state": 42,
         "verbosity": -1
       },
       "val_metrics": {
-        "mae": 5.1675,
-        "rmse": 21.5123,
-        "mape_pct": 15.63,
-        "directional_accuracy_pct": 79.05
+        "mae": 5.9263,
+        "rmse": 39.7106,
+        "mape_pct": 15.12,
+        "directional_accuracy_pct": 78.86
       },
       "test_metrics": {
-        "mae": 9.4731,
-        "rmse": 29.4841,
-        "mape_pct": 22.63,
-        "directional_accuracy_pct": 74.4
+        "mae": 13.2114,
+        "rmse": 39.3605,
+        "mape_pct": 34.58,
+        "directional_accuracy_pct": 73.64
       },
-      "tuning_seconds": 444.3
+      "tuning_seconds": 678.3
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_north_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 12218.0
+      },
+      {
+        "feature": "month",
+        "importance": 5763.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 5096.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 4704.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 4426.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 4261.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 4135.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 3999.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 3681.0
+      },
+      {
+        "feature": "regup_lag_24h",
+        "importance": 3662.0
+      }
+    ]
+  },
+  "lz_raybn": {
+    "settlement_point": "lz_raybn",
+    "naive_baseline_val": {
+      "mae": 14.2381,
+      "rmse": 73.5039,
+      "mape_pct": 46.5,
+      "directional_accuracy_pct": 79.3
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 2461,
+        "depth": 7,
+        "learning_rate": 0.018653812834062786,
+        "l2_leaf_reg": 5.261107060842183,
+        "subsample": 0.6698738951746653,
+        "random_strength": 0.5164667768250342,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 6.7087,
+        "rmse": 45.9538,
+        "mape_pct": 16.38,
+        "directional_accuracy_pct": 76.72
+      },
+      "test_metrics": {
+        "mae": 13.0046,
+        "rmse": 63.6171,
+        "mape_pct": 27.48,
+        "directional_accuracy_pct": 74.58
+      },
+      "tuning_seconds": 660.3
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 1574,
+        "max_depth": 10,
+        "learning_rate": 0.10112788642692021,
+        "num_leaves": 117,
+        "min_child_samples": 26,
+        "reg_alpha": 8.250861148935481,
+        "reg_lambda": 9.942234207839512,
+        "subsample": 0.9286567632183409,
+        "colsample_bytree": 0.9930806138626884,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 6.0072,
+        "rmse": 39.6808,
+        "mape_pct": 15.24,
+        "directional_accuracy_pct": 77.45
+      },
+      "test_metrics": {
+        "mae": 8.093,
+        "rmse": 27.205,
+        "mape_pct": 21.73,
+        "directional_accuracy_pct": 73.96
+      },
+      "tuning_seconds": 910.7
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_raybn_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 8519.0
+      },
+      {
+        "feature": "month",
+        "importance": 4097.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 2207.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 2144.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 2039.0
+      },
+      {
+        "feature": "wind_ramp_1h",
+        "importance": 2015.0
+      },
+      {
+        "feature": "wind_ramp_4h",
+        "importance": 1909.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 1808.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 1795.0
+      },
+      {
+        "feature": "regdn",
+        "importance": 1560.0
+      }
+    ]
+  },
+  "lz_south": {
+    "settlement_point": "lz_south",
+    "naive_baseline_val": {
+      "mae": 14.6151,
+      "rmse": 68.9085,
+      "mape_pct": 47.21,
+      "directional_accuracy_pct": 79.43
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 943,
+        "depth": 5,
+        "learning_rate": 0.08871487818661988,
+        "l2_leaf_reg": 7.241921776990768,
+        "subsample": 0.6790080737919015,
+        "random_strength": 3.049854376935502,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 7.0287,
+        "rmse": 42.65,
+        "mape_pct": 15.92,
+        "directional_accuracy_pct": 76.28
+      },
+      "test_metrics": {
+        "mae": 9.1838,
+        "rmse": 46.1467,
+        "mape_pct": 21.52,
+        "directional_accuracy_pct": 75.47
+      },
+      "tuning_seconds": 221.7
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2183,
+        "max_depth": 4,
+        "learning_rate": 0.1342162189841139,
+        "num_leaves": 204,
+        "min_child_samples": 34,
+        "reg_alpha": 2.098704710617345,
+        "reg_lambda": 7.123111703042801,
+        "subsample": 0.7977173825487835,
+        "colsample_bytree": 0.903681362500329,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 5.9952,
+        "rmse": 38.1416,
+        "mape_pct": 14.16,
+        "directional_accuracy_pct": 78.52
+      },
+      "test_metrics": {
+        "mae": 6.226,
+        "rmse": 26.4792,
+        "mape_pct": 18.6,
+        "directional_accuracy_pct": 73.78
+      },
+      "tuning_seconds": 204.8
+    },
+    "best_model": "lightgbm",
+    "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_south_lightgbm.joblib",
+    "top_features": [
+      {
+        "feature": "hour_of_day",
+        "importance": 1081.0
+      },
+      {
+        "feature": "dam_lag_1h",
+        "importance": 467.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 259.0
+      },
+      {
+        "feature": "month",
+        "importance": 242.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 211.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 129.0
+      },
+      {
+        "feature": "gas_pct",
+        "importance": 123.0
+      },
+      {
+        "feature": "dam_lag_4h",
+        "importance": 116.0
+      },
+      {
+        "feature": "nuclear_pct",
+        "importance": 114.0
+      },
+      {
+        "feature": "day_of_week",
+        "importance": 108.0
+      }
+    ]
+  },
+  "lz_west": {
+    "settlement_point": "lz_west",
+    "naive_baseline_val": {
+      "mae": 22.0905,
+      "rmse": 78.1906,
+      "mape_pct": 101.05,
+      "directional_accuracy_pct": 75.3
+    },
+    "catboost": {
+      "best_params": {
+        "iterations": 1849,
+        "depth": 5,
+        "learning_rate": 0.057777328413819405,
+        "l2_leaf_reg": 1.0038419730093002,
+        "subsample": 0.7701418552510028,
+        "random_strength": 3.0663417474544667,
+        "loss_function": "MAE",
+        "verbose": 0,
+        "random_seed": 42,
+        "allow_writing_files": false
+      },
+      "val_metrics": {
+        "mae": 7.6468,
+        "rmse": 42.4381,
+        "mape_pct": 18.94,
+        "directional_accuracy_pct": 75.35
+      },
+      "test_metrics": {
+        "mae": 10.1081,
+        "rmse": 42.8679,
+        "mape_pct": 26.95,
+        "directional_accuracy_pct": 72.45
+      },
+      "tuning_seconds": 797.3
+    },
+    "lightgbm": {
+      "best_params": {
+        "n_estimators": 2491,
+        "max_depth": 10,
+        "learning_rate": 0.04606938005079993,
+        "num_leaves": 72,
+        "min_child_samples": 36,
+        "reg_alpha": 7.502863125421353,
+        "reg_lambda": 5.692995073564143,
+        "subsample": 0.7397413624532058,
+        "colsample_bytree": 0.7981626662002957,
+        "objective": "mae",
+        "random_state": 42,
+        "verbosity": -1
+      },
+      "val_metrics": {
+        "mae": 7.5015,
+        "rmse": 40.9826,
+        "mape_pct": 19.42,
+        "directional_accuracy_pct": 76.66
+      },
+      "test_metrics": {
+        "mae": 9.1331,
+        "rmse": 33.3727,
+        "mape_pct": 23.23,
+        "directional_accuracy_pct": 72.66
+      },
+      "tuning_seconds": 355.8
     },
     "best_model": "lightgbm",
     "model_path": "/Users/bot/projects/ercot/prediction/models/dam_v2/checkpoints/lz_west_lightgbm.joblib",
     "top_features": [
       {
         "feature": "hour_of_day",
-        "importance": 4507.0
-      },
-      {
-        "feature": "dam_lag_1h",
-        "importance": 2165.0
-      },
-      {
-        "feature": "dam_rtm_spread",
-        "importance": 1673.0
+        "importance": 14175.0
       },
       {
         "feature": "month",
-        "importance": 1356.0
+        "importance": 6751.0
       },
       {
-        "feature": "rtm_lag_1h",
-        "importance": 1340.0
-      },
-      {
-        "feature": "gas_ramp_1h",
-        "importance": 886.0
-      },
-      {
-        "feature": "dam_lag_24h",
-        "importance": 759.0
+        "feature": "dam_lag_1h",
+        "importance": 4412.0
       },
       {
         "feature": "wind_ramp_1h",
-        "importance": 595.0
+        "importance": 3702.0
       },
       {
-        "feature": "reg_spread",
-        "importance": 571.0
+        "feature": "day_of_week",
+        "importance": 3664.0
+      },
+      {
+        "feature": "gas_ramp_1h",
+        "importance": 3626.0
       },
       {
         "feature": "wind_ramp_4h",
-        "importance": 556.0
+        "importance": 3431.0
+      },
+      {
+        "feature": "dam_rtm_spread",
+        "importance": 3337.0
+      },
+      {
+        "feature": "dam_lag_24h",
+        "importance": 3216.0
+      },
+      {
+        "feature": "rtm_lag_24h",
+        "importance": 2987.0
       }
     ]
   }
