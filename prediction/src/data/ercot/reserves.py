@@ -19,10 +19,11 @@ from scraper.src.ercot_client import ErcotClient
 ARCHIVE_URL = "https://api.ercot.com/api/public-reports/archive/np6-792-er"
 
 # Columns we keep (mapped from raw → clean name)
+# Raw column names have varying whitespace/casing across years
 KEEP_COLUMNS = {
+    "batch_id": "batch_id",
     "sced_timestamp": "sced_timestamp",
     "repeated_hour_flag": "repeated_hour",
-    "batch_id": "batch_id",
     "system_lamda": "system_lambda",
     "system_lambda": "system_lambda",
     "prc": "prc",
@@ -205,8 +206,11 @@ def parse_xlsx(xlsx_path: Path) -> pd.DataFrame:
 
     combined = combined.rename(columns=result_cols)
 
+    # Drop duplicate columns (e.g. system_lamda + system_lambda → both mapped to system_lambda)
+    combined = combined.loc[:, ~combined.columns.duplicated(keep="first")]
+
     # Keep only canonical columns that exist
-    canonical = list(KEEP_COLUMNS.values())
+    canonical = list(dict.fromkeys(KEEP_COLUMNS.values()))  # dedupe preserving order
     existing = [c for c in canonical if c in combined.columns]
     combined = combined[existing].copy()
 

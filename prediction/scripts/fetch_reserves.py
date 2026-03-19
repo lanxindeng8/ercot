@@ -46,6 +46,10 @@ def main():
     archives = list_archive_files(client)
     logger.info(f"Found {len(archives)} archive files")
 
+    # Filter: only RTM_ORDC files (skip HIST_RT_SCED which has different format)
+    archives = [a for a in archives if a["friendlyName"].startswith("RTM_ORDC")]
+    logger.info(f"Filtered to {len(archives)} RTM_ORDC files")
+
     total_rows = 0
     for i, archive in enumerate(archives, 1):
         doc_id = archive["docId"]
