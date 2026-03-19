@@ -7,6 +7,7 @@ with SCED-interval reserve and ORDC price adder data, and stores to SQLite.
 
 import io
 import sqlite3
+import time
 import zipfile
 from pathlib import Path
 from typing import List, Dict, Any
@@ -104,8 +105,22 @@ def download_archive(
     url = f"{ARCHIVE_URL}?download={doc_id}"
     logger.info(f"Downloading archive doc_id={doc_id}")
 
-    response = client.session.get(url, headers=headers, timeout=300, stream=True)
-    response.raise_for_status()
+    for attempt in range(4):
+        try:
+            response = client.session.get(url, headers=headers, timeout=300, stream=True)
+            if response.status_code == 429:
+                raise Exception("429")
+            response.raise_for_status()
+            break
+        except Exception as e:
+            if "429" in str(e) and attempt < 3:
+                wait = 60 * (attempt + 1)
+                logger.warning(f"Rate limited (429), waiting {wait}s (attempt {attempt + 1}/4)")
+                time.sleep(wait)
+                # Refresh token in case it expired
+                headers = client.get_headers("public")
+            else:
+                raise
 
     content = response.content
     with zipfile.ZipFile(io.BytesIO(content)) as zf:

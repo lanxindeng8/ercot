@@ -50,6 +50,21 @@ def main():
     archives = [a for a in archives if a["friendlyName"].startswith("RTM_ORDC")]
     logger.info(f"Filtered to {len(archives)} RTM_ORDC files")
 
+    # Keep only the latest archive per year (most recent postDatetime)
+    # Each weekly update overwrites the yearly file, so latest = most complete
+    from collections import defaultdict
+    by_year = defaultdict(list)
+    for a in archives:
+        year = a["friendlyName"].rsplit("_", 1)[-1]  # e.g. "2025"
+        by_year[year].append(a)
+    archives = []
+    for year in sorted(by_year.keys()):
+        # Sort by postDatetime descending, take first (latest)
+        candidates = sorted(by_year[year], key=lambda x: x.get("postDatetime", ""), reverse=True)
+        archives.append(candidates[0])
+        logger.info(f"  Year {year}: using latest archive (docId={candidates[0]['docId']}, posted={candidates[0].get('postDatetime', '?')})")
+    logger.info(f"Deduplicated to {len(archives)} archives (one per year)")
+
     total_rows = 0
     for i, archive in enumerate(archives, 1):
         doc_id = archive["docId"]
@@ -73,6 +88,7 @@ def main():
         if xlsx_path is None:
             try:
                 xlsx_path = download_archive(client, doc_id, output_dir)
+                import time; time.sleep(5)  # rate limit courtesy
             except Exception:
                 logger.exception(f"  Failed to download {name}")
                 continue

@@ -81,9 +81,21 @@ def fetch_wind_forecast(
     }
 
     all_records: List[Dict[str, Any]] = []
-    for page_records in client.fetch_paginated_data(ENDPOINT_WIND_FORECAST, params):
-        all_records.extend(page_records)
-        time.sleep(0.5)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            for page_records in client.fetch_paginated_data(ENDPOINT_WIND_FORECAST, params):
+                all_records.extend(page_records)
+                time.sleep(0.5)
+            break  # success
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait = 30 * (attempt + 1)
+                logger.warning(f"Rate limited, waiting {wait}s before retry ({attempt + 1}/{max_retries})")
+                time.sleep(wait)
+                all_records.clear()
+            else:
+                raise
 
     if not all_records:
         logger.warning(f"No wind forecast data for {delivery_date_from} to {delivery_date_to}")
