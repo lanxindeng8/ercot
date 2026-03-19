@@ -69,10 +69,18 @@
 | P2 | **System Load Forecast** | NP3-565-CD | 未验证 | 待定 | 1 天 |
 
 **关键发现:**
-- ERCOT MIS (`misapp/servlets/IceDocListJsonWS`) **不需要 API credentials**，匿名即可列出+下载
-- 我们的 `scraper/.env` 没有配 ERCOT API credentials，历史数据是通过 MIS bulk 下载导入的
+- **ERCOT API credentials 已配置**（在 LaunchAgent plist 的 EnvironmentVariables 中，不在 `.env`）。Scraper 一直正常运行
+- ERCOT API client (`ercot_client.py`) 可直接复用，已有 `fetch_paginated_data()` 方法
+- **NP4-732-CD (Wind Forecast) 是 data endpoint** — 直接 API 查询，跟现有 LMP scraper 一样
+- **NP6-792-ER (RT Reserves) 是 report 类型** — 只有 archive 下载 (yearly XLSX zip)，不是 data API
+- **NP6-323-CD (RT ORDC 实时) 也是 report 类型** — 同样只有 archive 下载
 - Open-Meteo `wind_speed_80m` 在 archive API 中全是 null，需用 ERA5 endpoint 或只用 10m 风速
 - Binding Constraints 历史回填不可行，改用 zone-hub spread (LMP 差值) 近似 congestion
+
+**ERCOT API credentials (LaunchAgent):**
+- Username: truetest86@gmail.com
+- Subscription Key: 049314186c4a42c5af5b321f238fb83b
+- Auth: B2C ROPC flow → Bearer token
 
 ### 天气数据方案对比
 
