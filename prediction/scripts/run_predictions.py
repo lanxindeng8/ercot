@@ -34,6 +34,7 @@ CENTRAL_TZ = ZoneInfo("America/Chicago")
 DAM_SETTLEMENT_POINTS = ["HB_WEST", "HB_NORTH", "HB_SOUTH", "HB_HOUSTON", "HB_BUSAVG"]
 RTM_SETTLEMENT_POINTS = ["HB_WEST"]
 SPIKE_SETTLEMENT_POINTS = ["HB_WEST"]
+SPIKE_V2_ENABLED = True
 
 logging.basicConfig(
     level=logging.INFO,
@@ -298,6 +299,44 @@ def run_spike_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int
     return count
 
 
+def run_spike_v2_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
+    """Fetch spike V2 predictions for all 14 SPs and store them."""
+    now = datetime.now(timezone.utc)
+    data = call_api(client, "/predict/spike/v2/all")
+    if not data or data.get("status") != "success":
+        return 0
+
+    predictions = data.get("predictions", [])
+    rows = []
+    for pred in predictions:
+        sp = pred.get("settlement_point", "")
+        prob = pred.get("probability")
+        if prob is None:
+            continue
+        target_time = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).isoformat()
+        meta = {
+            "is_alert": pred.get("is_alert"),
+            "risk_level": pred.get("risk_level"),
+            "regime": pred.get("regime"),
+            "top_drivers": pred.get("top_drivers"),
+            "model_version": pred.get("model_version"),
+        }
+        rows.append((
+            "spike_v2",
+            sp,
+            target_time,
+            "1h",
+            prob,
+            "probability",
+            json.dumps(meta),
+            pred.get("timestamp", now.isoformat()),
+        ))
+    if rows:
+        store_predictions_batch(conn, rows)
+        log.info("Spike V2: stored %d predictions", len(rows))
+    return len(rows)
+
+
 def run_wind_predictions(client: httpx.Client, conn: sqlite3.Connection) -> int:
     """Fetch wind generation predictions and store them."""
     now = datetime.now(timezone.utc)
@@ -414,6 +453,10 @@ def run(db_path: Path = DB_PATH, api_base: str = API_BASE) -> Dict[str, int]:
         log.info("Running 5-min tasks (RTM + spike)...")
         results["rtm"] = run_rtm_predictions(client, conn)
         results["spike"] = run_spike_predictions(client, conn)
+
+        # Spike V2: all 14 SPs every 5 min
+        if SPIKE_V2_ENABLED:
+            results["spike_v2"] = run_spike_v2_predictions(client, conn)
 
         # Every hour (when minute < 5, i.e. first run of the hour): wind + load
         if minute < 5:

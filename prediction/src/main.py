@@ -29,6 +29,7 @@ from .models.delta_spread import get_predictor
 from .models.dam_v2_predictor import get_dam_v2_predictor
 from .models.rtm_predictor import get_rtm_predictor
 from .models.spike_predictor import get_spike_predictor
+from .models.spike_v2_predictor import get_spike_v2_predictor
 from .models.wind_predictor import get_wind_predictor
 from .models.load_predictor import get_load_predictor
 from .models.bess_predictor import get_bess_predictor
@@ -571,6 +572,67 @@ async def predict_spike(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Spike V2 — LightGBM zone-level spike detection (14 SPs)
+# ---------------------------------------------------------------------------
+
+@app.get("/predict/spike/v2/all", tags=["Predictions"])
+async def predict_spike_v2_all():
+    """
+    Spike V2 predictions for all 14 settlement points, ranked by probability.
+    """
+    predictor = get_spike_v2_predictor()
+    if not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="Spike V2 models not loaded")
+    results = predictor.predict_all()
+    return {
+        "status": "success",
+        "model_version": "v2_lead60",
+        "count": len(results),
+        "predictions": results,
+    }
+
+
+@app.get("/predict/spike/v2/alerts", tags=["Predictions"])
+async def predict_spike_v2_alerts():
+    """
+    Spike V2 alerts — only settlement points with probability >= 0.3 (medium+ risk).
+    """
+    predictor = get_spike_v2_predictor()
+    if not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="Spike V2 models not loaded")
+    alerts = predictor.predict_alerts(threshold=0.3)
+    return {
+        "status": "success",
+        "model_version": "v2_lead60",
+        "count": len(alerts),
+        "alerts": alerts,
+    }
+
+
+@app.get("/predict/spike/v2/{sp}", tags=["Predictions"])
+async def predict_spike_v2(sp: str):
+    """
+    Spike V2 prediction for a single settlement point.
+
+    Uses LightGBM models trained per-zone on lead_spike_60 target.
+    Returns probability, risk level, regime, and top feature drivers.
+    """
+    normalized_sp = _normalize_settlement_point(sp)
+    predictor = get_spike_v2_predictor()
+    if not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="Spike V2 models not loaded")
+    if not predictor.has_model(normalized_sp):
+        raise HTTPException(
+            status_code=404,
+            detail=f"No spike V2 model for '{normalized_sp}'. Available: {predictor.available_settlement_points()}",
+        )
+    result = predictor.predict(normalized_sp)
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return {"status": "success", **result}
 
 
 # ---------------------------------------------------------------------------

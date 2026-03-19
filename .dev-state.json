@@ -2,19 +2,20 @@
   "version": 2,
   "timestamp": "2026-03-19T12:02:00-05:00",
   "state": "waiting_cc",
-  "task": "spike-pred-phase1-training",
-  "task_description": "CC writing spike_model.py + train_spike.py + evaluate_spike.py + tests",
+  "task": "spike-api-integration",
+  "task_description": "CC writing spike v2 API endpoints + predictor + runner integration + tests",
   "current_step": {
-    "name": "cc-train-spike-gbm",
-    "on_complete": "Review diff → Codex review → run training on all 14 SPs"
+    "name": "cc-spike-api",
+    "on_complete": "Review diff → test → commit → try data backfill"
   },
   "next_steps": [
-    "Review CC output",
-    "Codex review",
-    "Run train_spike.py --all",
-    "Run evaluate_spike.py (PR-AUC + 2025-12-14 case study)",
-    "Backfill remaining data (reserves 2020-2023, wind 2025-10+)"
+    "Review CC output for spike_v2_predictor.py + API endpoints",
+    "Run tests",
+    "Commit + restart prediction API service",
+    "Backfill reserves 2020-2023 + wind 2025-10+",
+    "Optuna tuning",
+    "Phase 2 multi-horizon"
   ],
-  "background_processes": [{"id": "amber-coral", "host": "local", "desc": "CC writing spike training code"}],
-  "commits_this_session": ["8529b36", "c857bf6", "c8258a0", "c3fa68b", "7b2a83f"]
+  "background_processes": [{"id": "tide-zephyr", "host": "local", "desc": "CC writing spike v2 API integration"}],
+  "commits_this_session": ["8529b36", "c857bf6", "c8258a0", "c3fa68b", "7b2a83f", "17520ea", "5d82385"]
 }
