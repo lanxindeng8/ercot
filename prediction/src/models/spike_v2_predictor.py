@@ -30,8 +30,9 @@ log = logging.getLogger(__name__)
 MODEL_DIR = MODELS_DIR / "spike"
 DB_PATH = Path(__file__).resolve().parents[3] / "scraper" / "data" / "ercot_archive.db"
 
-# Feature window: build 24h of features so rolling windows are warm
-FEATURE_WINDOW_HOURS = 24
+# Feature window: build 7 days of features so rolling windows are warm
+# and we can tolerate _hist table lag (typically 1-2 days behind real-time)
+FEATURE_WINDOW_HOURS = 168
 
 # Risk level thresholds
 _RISK_LEVELS = [
