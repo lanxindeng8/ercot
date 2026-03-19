@@ -226,3 +226,76 @@ class TestEventRecall:
         r = compute_event_recall(ts, y_true, y_prob)
         assert r["n_events"] == 0
         assert np.isnan(r["event_recall"])
+
+
+# ---------------------------------------------------------------------------
+# Optuna tuning tests
+# ---------------------------------------------------------------------------
+
+class TestTuneSpike:
+
+    def test_optuna_study_runs(self, wide_date_df):
+        """Optuna study should complete 2 trials on synthetic data."""
+        from prediction.scripts.tune_spike import create_objective
+
+        feature_cols = get_feature_cols(wide_date_df)
+        train_df, val_df, _ = split_data(wide_date_df)
+
+        pos = (train_df[TARGET] == 1).sum()
+        neg = (train_df[TARGET] == 0).sum()
+        neg_pos_ratio = neg / max(pos, 1)
+
+        import optuna
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        study = optuna.create_study(direction="maximize")
+        objective = create_objective(train_df, val_df, feature_cols, neg_pos_ratio)
+        study.optimize(objective, n_trials=2)
+
+        assert len(study.trials) == 2
+        assert study.best_value > 0  # PR-AUC should be positive
+        assert study.best_params is not None
+
+    def test_best_params_valid_lgb_config(self, wide_date_df):
+        """Best params from Optuna should be valid LightGBM parameters."""
+        from prediction.scripts.tune_spike import create_objective
+
+        feature_cols = get_feature_cols(wide_date_df)
+        train_df, val_df, _ = split_data(wide_date_df)
+
+        pos = (train_df[TARGET] == 1).sum()
+        neg = (train_df[TARGET] == 0).sum()
+        neg_pos_ratio = neg / max(pos, 1)
+
+        import optuna
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        study = optuna.create_study(direction="maximize")
+        objective = create_objective(train_df, val_df, feature_cols, neg_pos_ratio)
+        study.optimize(objective, n_trials=2)
+
+        best = study.best_params
+        # Check expected keys exist and have valid ranges
+        assert 15 <= best["num_leaves"] <= 127
+        assert 0.01 <= best["learning_rate"] <= 0.3
+        assert 0.5 <= best["feature_fraction"] <= 1.0
+        assert 0.5 <= best["bagging_fraction"] <= 1.0
+        assert 10 <= best["min_child_samples"] <= 100
+        assert best["scale_pos_weight"] >= 50
+        assert 0 <= best["reg_alpha"] <= 10
+        assert 0 <= best["reg_lambda"] <= 10
+        assert best["max_depth"] in [-1, 3, 5, 7, 10, 15]
+        assert 0 <= best["min_split_gain"] <= 1.0
+
+        # Verify params work with LightGBM by training a model
+        best.update({
+            "objective": "binary",
+            "metric": ["binary_logloss", "auc"],
+            "bagging_freq": 5,
+            "verbose": -1,
+        })
+        model = train_model(
+            train_df, val_df, feature_cols,
+            params=best, num_boost_round=10, early_stopping_rounds=5,
+        )
+        preds = model.predict(val_df[feature_cols])
+        assert len(preds) == len(val_df)
+        assert (preds >= 0).all() and (preds <= 1).all()
