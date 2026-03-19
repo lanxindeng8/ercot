@@ -274,7 +274,7 @@ def label_all_zones(
             "spread": (sub[sp] - sub[hub]).values,
             "spike_event": spike_ev.values,
             "lead_spike_60": lead_sp.values,
-            "regime": regime.values,
+            "regime": np.asarray(regime),
         })
         frames.append(out)
 
