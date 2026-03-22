@@ -72,7 +72,9 @@ class SpikeV2Predictor:
             return
 
         for sp in SPIKE_SPS:
-            model_path = self.model_dir / f"{sp}_lead60.lgb"
+            # Prefer tuned model if available, fall back to baseline
+            tuned_path = self.model_dir / f"{sp}_lead60_tuned.lgb"
+            model_path = tuned_path if tuned_path.exists() else self.model_dir / f"{sp}_lead60.lgb"
             metrics_path = self.model_dir / f"{sp}_lead60_metrics.json"
 
             if not model_path.exists():
