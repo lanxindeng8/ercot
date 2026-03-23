@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Fetch ONE missing month of wind forecast data, then exit.
+"""Fetch missing wind forecast months sequentially until rate-limited or done.
 
-Designed to be called by cron every hour. Finds the first missing month,
-fetches it, and exits. If rate-limited (429), exits immediately without retry.
-When all months are filled, prints COMPLETE and exits 0.
+Designed to be called by cron every hour. Fetches missing months one by one
+in order. Stops on 429 rate limit or when all months are filled.
 """
+import calendar
+import os
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-# Must run with PYTHONPATH=~/projects/ercot
-from scraper.src.ercot_client import create_client_from_env
+from scraper.src.ercot_client import ErcotClient
 from prediction.src.data.ercot.wind_forecast import (
     fetch_wind_forecast,
     deduplicate_latest,
@@ -53,50 +53,46 @@ def main():
         print("COMPLETE — all wind forecast months filled")
         return
 
-    target = missing[0]
-    print(f"Missing months: {len(missing)} — fetching {target}")
+    print(f"Missing months: {len(missing)} — {missing}")
 
-    # Compute date range for this month
-    year, month = int(target[:4]), int(target[5:7])
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year}-12-31"
-    else:
-        from datetime import date
-        import calendar
-        last_day = calendar.monthrange(year, month)[1]
-        end_date = f"{year}-{month:02d}-{last_day}"
-
-    # Create client with max_retries=0 so 429 fails immediately
-    from scraper.src.ercot_client import ErcotClient
-    import os
     client = ErcotClient(
         username=os.environ["ERCOT_API_USERNAME"],
         password=os.environ["ERCOT_API_PASSWORD"],
         public_subscription_key=os.environ["ERCOT_PUBLIC_API_SUBSCRIPTION_KEY"],
-        max_retries=1,  # one retry then give up
+        max_retries=1,  # one retry then give up on 429
     )
 
-    try:
-        df = fetch_wind_forecast(client, start_date, end_date)
-        if df.empty:
-            print(f"No data returned for {target}")
-            return
-        df = deduplicate_latest(df)
-        df = pivot_to_regions(df)
-        save_to_sqlite(df, DB_PATH)
-        print(f"OK — saved {len(df)} rows for {target}")
+    fetched = 0
+    for target in missing:
+        year, month = int(target[:4]), int(target[5:7])
+        start_date = f"{year}-{month:02d}-01"
+        last_day = calendar.monthrange(year, month)[1]
+        end_date = f"{year}-{month:02d}-{last_day}"
 
-        # Check if done
-        remaining = get_missing_months(DB_PATH)
-        if not remaining:
-            print("COMPLETE — all wind forecast months filled")
-    except Exception as e:
-        if "429" in str(e):
-            print(f"RATE_LIMITED — skipping {target}, will retry next hour")
-        else:
-            print(f"ERROR — {e}")
-            sys.exit(1)
+        print(f"Fetching {target} ({start_date} → {end_date})...")
+        try:
+            df = fetch_wind_forecast(client, start_date, end_date)
+            if df.empty:
+                print(f"  No data returned for {target}, skipping")
+                continue
+            df = deduplicate_latest(df)
+            df = pivot_to_regions(df)
+            save_to_sqlite(df, DB_PATH)
+            fetched += 1
+            print(f"  OK — saved {len(df)} rows for {target}")
+        except Exception as e:
+            if "429" in str(e):
+                print(f"RATE_LIMITED after {fetched} months — stopping, will retry next hour")
+                return
+            else:
+                print(f"  ERROR on {target}: {e}")
+                continue
+
+    remaining = get_missing_months(DB_PATH)
+    if not remaining:
+        print(f"COMPLETE — fetched {fetched} months, all wind forecast months filled")
+    else:
+        print(f"Done this run: {fetched} months fetched, {len(remaining)} still missing")
 
 
 if __name__ == "__main__":
