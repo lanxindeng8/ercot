@@ -76,11 +76,23 @@ Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 
 - **大批量（>20 请求）**: 分多天完成，或找 archive 替代方案
 - **脚本模式**: 触发限流就立即放弃，不做长时间退避重试（浪费时间，配额要到下一小时才重置）
 
-### LaunchAgent 运行时
-- RTM scraper: 每 5 分钟（最高频请求者）
-- DAM scraper: 每天 1 次
-- Prediction runner: 不直接调 ERCOT API（只调本地 prediction-api）
-- **建议**: RTM scraper 降频到每 15 分钟，或与其他 job 错开
+### LaunchAgent 架构 (2026-03-23 重构)
+
+| Job | 频率 | ERCOT API? | 说明 |
+|---|---|---|---|
+| `rtm-lmp-cdr` | 5min | ❌ CDR HTML | 实时 RTM 数据，不走 API |
+| `rtm-lmp-api` | 1h | ✅ | RTM 历史回填（6h 延迟数据） |
+| `dam-pipeline` | 每天 14:00 | ✅ (1次) | 合并流水线: predictions → API fetch → CDR fetch → Telegram |
+| `prediction-runner` | 5min | ❌ | 调本地 localhost:8011 |
+| `prediction-api` | 常驻 | ❌ | FastAPI 服务 |
+| `telegram-lmp-summary` | 每天 06:30 | ❌ | 读 InfluxDB |
+| `btc-price-monitor` | 5min | ❌ | PolyManager 项目，不相关 |
+
+**ERCOT API 调用者只有 2 个**: `rtm-lmp-api`（每小时）+ `dam-pipeline`（每天 14:00 一次）
+
+**已废弃（不再加载）**:
+- `rtm-lmp-scraper` → 拆为 `rtm-lmp-cdr` + `rtm-lmp-api`
+- `dam-lmp-scraper`, `dam-lmp-cdr-scraper`, `dam-predictions`, `telegram-dam-schedule` → 合并为 `dam-pipeline`
 
 ## 数据补全现状 (2026-03-23)
 
