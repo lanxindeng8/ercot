@@ -91,8 +91,13 @@ async def api_key_auth_middleware(request: Request, call_next):
     """Authenticate requests via X-API-Key header. Skip auth for health/docs."""
     path = request.url.path
 
-    # Skip auth for health, docs, and admin endpoints (admin has its own auth)
+    # Skip auth for health, docs, admin, and localhost requests (internal runner)
     if path in SKIP_AUTH_PATHS or path.startswith("/admin"):
+        response = await call_next(request)
+        return response
+
+    client_host = request.client.host if request.client else None
+    if client_host in ("127.0.0.1", "::1", "localhost"):
         response = await call_next(request)
         return response
 

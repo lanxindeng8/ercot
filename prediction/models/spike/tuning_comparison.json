@@ -1,0 +1,67 @@
+[
+  {
+    "settlement_point": "LZ_LCRA",
+    "baseline": {
+      "pr_auc": 0.3928551043894399,
+      "roc_auc": 0.9257344369912879,
+      "event_recall": 0.8571428571428571
+    },
+    "tuned": {
+      "pr_auc": 0.6649330342797083,
+      "roc_auc": 0.9881820319849483,
+      "event_recall": 0.8571428571428571
+    }
+  },
+  {
+    "settlement_point": "LZ_NORTH",
+    "baseline": {
+      "pr_auc": 0.20989113293543293,
+      "roc_auc": 0.9553040216492026,
+      "event_recall": 1.0
+    },
+    "tuned": {
+      "pr_auc": 0.5202943081015494,
+      "roc_auc": 0.9734576426497199,
+      "event_recall": 0.875
+    }
+  },
+  {
+    "settlement_point": "LZ_RAYBN",
+    "baseline": {
+      "pr_auc": 0.15502059451512454,
+      "roc_auc": 0.9197677905117271,
+      "event_recall": 1.0
+    },
+    "tuned": {
+      "pr_auc": 0.3925953732464949,
+      "roc_auc": 0.9653164145788913,
+      "event_recall": 1.0
+    }
+  },
+  {
+    "settlement_point": "LZ_SOUTH",
+    "baseline": {
+      "pr_auc": 0.4298211805729917,
+      "roc_auc": 0.9845873867270789,
+      "event_recall": 1.0
+    },
+    "tuned": {
+      "pr_auc": 0.4609732369775926,
+      "roc_auc": 0.985259944696162,
+      "event_recall": 1.0
+    }
+  },
+  {
+    "settlement_point": "LZ_WEST",
+    "baseline": {
+      "pr_auc": 0.32608294380075337,
+      "roc_auc": 0.9644561810883208,
+      "event_recall": 1.0
+    },
+    "tuned": {
+      "pr_auc": 0.6339369722538142,
+      "roc_auc": 0.9276299314772235,
+      "event_recall": 1.0
+    }
+  }
+]

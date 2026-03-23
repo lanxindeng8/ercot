@@ -15,3 +15,4 @@ node_modules/
 # OS
 .DS_Store
 catboost_info/
+prediction/data/spike_features/
