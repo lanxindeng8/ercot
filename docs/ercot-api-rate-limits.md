@@ -11,11 +11,22 @@
 
 ## Rate Limit 行为观察
 
-### 触发规律
-- **连续 3-5 个请求后触发 429**，无论请求间隔（即使间隔 10-15 秒）
-- 429 触发后，**冷却时间至少 2-5 分钟**，60 秒退避通常不够
-- ERCOT API **不返回 `Retry-After` header**，只能靠经验估计冷却时间
+### 限流类型：小时带宽限制
+429 响应体明确说明：
+```json
+{"statusCode": 429, "error": "BandwidthQuotaExceeded",
+ "message": "You have exceeded the hourly bandwidth limit. Your quota will reset within the hour."}
+```
+
+- **限制的是带宽（数据传输量），不是请求次数**
+- 配额 **每小时重置**（整点或滚动窗口）
 - 所有 endpoint 共享配额：rtm-lmp、dam-lmp、wind-forecast、archive 下载都算在内
+- ERCOT API **不返回 `Retry-After` header**
+
+### 经验数据
+- Wind forecast 每月 ~160K 行 (~10MB)，连续 3-5 个月查询后触发
+- Archive 下载每文件 ~16MB，连续 4 个可以过（间隔 90s），第 5 个大概率 429
+- 429 触发后，同一小时内的后续请求基本都会被拒
 
 ### 两类请求的差异
 | 类型 | Endpoint 示例 | 特点 |
@@ -60,9 +71,10 @@ Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 
 4. **失败不急** — 被 429 后至少等 5 分钟再试
 
 ### 批量 Backfill
-- **小批量（≤5 请求）**: 直接跑脚本，间隔 90 秒
-- **中批量（5-20 请求）**: 用 OpenClaw cron 调度，每 10-15 分钟触发一个请求
+- **Archive 类型（reserves 等）**: 直接跑脚本，间隔 90 秒，每小时 ≤4 个文件
+- **查询类型（wind forecast 等）**: 用 cron 每小时拉 1 个月，避免触发带宽限制
 - **大批量（>20 请求）**: 分多天完成，或找 archive 替代方案
+- **脚本模式**: 触发限流就立即放弃，不做长时间退避重试（浪费时间，配额要到下一小时才重置）
 
 ### LaunchAgent 运行时
 - RTM scraper: 每 5 分钟（最高频请求者）
@@ -82,14 +94,24 @@ Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 
 |---|---|
 | 33 个月 (2022-12 → 2025-11) | `2024-04, 2024-05, 2024-07, 2025-12, 2026-01, 2026-02, 2026-03` |
 
-**补全方案**:
-1. 检查 NP4-732-CD 是否有 archive 格式（一次下载整年）
-2. 如果没有，用 cron 滴灌：每 15 分钟取一个月，7 个月 ≈ 2 小时完成
-3. 2026-01~03 如果 API 没有数据（太新），可能需要等 ERCOT 发布
+**补全方案（已实施）**:
+- OpenClaw cron job `wind-forecast-backfill`，每 1 小时触发
+- 脚本 `prediction/scripts/fetch_wind_one_month.py`：找第一个缺失月 → 拉一个月 → 429 就放弃等下次
+- 全部补完后自动删除 cron job
+- 预计 7 小时内补完（每小时 1 个月）
+
+## Cron Jobs
+
+### wind-forecast-backfill
+- **频率**: 每 1 小时
+- **脚本**: `prediction/scripts/fetch_wind_one_month.py`
+- **逻辑**: 查 DB 找第一个缺失月 → 拉数据 → 429 就退出 → 全部补完自动删 cron
+- **状态**: 运行中（2026-03-23 创建）
 
 ## 未来优化方向
 
 - [ ] 获取第二个 subscription key（如果 ERCOT 允许多 key）
 - [ ] 实现请求配额池：所有 job 共享一个令牌桶，防并发超限
-- [ ] 对 NP4-732-CD 检查 archive endpoint 是否可用
-- [ ] RTM scraper 降频 + 加退避
+- [ ] 检查 NP4-732-CD 是否有 archive endpoint（待 429 配额恢复后查）
+- [ ] RTM scraper 降频到 15 分钟 + 加退避
+- [ ] 退避策略调整：429 后不做长退避，直接放弃等下个小时（匹配 hourly quota reset）
