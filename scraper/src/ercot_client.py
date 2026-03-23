@@ -6,6 +6,7 @@ Based on the original Node.js Lambda implementation.
 """
 
 import os
+import random
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Generator, Any
@@ -31,8 +32,8 @@ class ErcotClient:
 
     # Configuration
     DEFAULT_PAGE_SIZE = 50000
-    DEFAULT_MAX_RETRIES = 3
-    DEFAULT_INITIAL_DELAY_MS = 1000
+    DEFAULT_MAX_RETRIES = 5
+    DEFAULT_INITIAL_DELAY_MS = 10000  # 10s initial backoff for 429
     TOKEN_EXPIRATION_SECONDS = 3600
     ERCOT_TIMEZONE = "America/Chicago"
 
@@ -71,7 +72,8 @@ class ErcotClient:
         retry_strategy = Retry(
             total=max_retries,
             backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[500, 502, 503, 504],
+            # 429 handled by our own make_api_call retry with longer backoff
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
@@ -175,11 +177,13 @@ class ErcotClient:
                 )
 
                 if response.status_code == 429:
-                    # Rate limited
+                    # Rate limited — use aggressive backoff with jitter
                     retries += 1
                     if retries <= self.max_retries:
-                        print(f"Rate limited, retrying in {delay}s... (attempt {retries}/{self.max_retries})")
-                        time.sleep(delay)
+                        jittered = delay * (0.5 + random.random())  # 50%-150% of delay
+                        capped = min(jittered, 300)  # cap at 5 minutes
+                        print(f"Rate limited (429), waiting {capped:.0f}s... (attempt {retries}/{self.max_retries})")
+                        time.sleep(capped)
                         delay *= 2
                         continue
                     else:
@@ -204,7 +208,8 @@ class ErcotClient:
                 if retries >= self.max_retries:
                     raise
                 retries += 1
-                time.sleep(delay)
+                jittered = delay * (0.5 + random.random())
+                time.sleep(min(jittered, 300))
                 delay *= 2
 
         raise RuntimeError(f"API request failed after {self.max_retries} retries")
