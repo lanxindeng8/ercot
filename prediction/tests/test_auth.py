@@ -28,8 +28,10 @@ def client(tmp_path):
     with patch.dict(os.environ, {"ADMIN_TOKEN": "test-admin-secret"}):
         with patch("prediction.src.main.get_key_manager", return_value=mgr):
             with patch("prediction.src.main.ADMIN_TOKEN", "test-admin-secret"):
-                from prediction.src.main import app
-                yield TestClient(app), mgr
+                with patch("prediction.src.routers.admin.ADMIN_TOKEN", "test-admin-secret"):
+                    with patch("prediction.src.routers.admin.get_key_manager", return_value=mgr):
+                        from prediction.src.main import app
+                        yield TestClient(app), mgr
 
 
 # ---------------------------------------------------------------------------

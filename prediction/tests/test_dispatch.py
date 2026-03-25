@@ -14,7 +14,8 @@ from prediction.src.dispatch.mining_dispatch import (
     _parse_hour_ending,
 )
 from prediction.src.dispatch.alert_service import AlertService, get_alert_service
-from prediction.src import main
+from prediction.src.routers import dispatch as dispatch_router
+from prediction.src.schemas import AlertConfigRequest
 
 
 # ---------------------------------------------------------------------------
@@ -292,18 +293,18 @@ class TestDispatchEndpoints:
                 return BessScheduleResult(sched, 100.0, "Optimal", 0.01, {})
 
         import pandas as pd
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDAMPredictor())
-        monkeypatch.setattr(main, "get_spike_predictor", lambda: FakeSpikePredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBESSPredictor())
-        monkeypatch.setattr(main, "_fetch_and_compute_features", lambda sp: pd.DataFrame({
+        monkeypatch.setattr(dispatch_router, "get_dam_v2_predictor", lambda: FakeDAMPredictor())
+        monkeypatch.setattr(dispatch_router, "get_spike_predictor", lambda: FakeSpikePredictor())
+        monkeypatch.setattr(dispatch_router, "get_bess_predictor", lambda: FakeBESSPredictor())
+        monkeypatch.setattr(dispatch_router, "fetch_and_compute_features", lambda sp: pd.DataFrame({
             "delivery_date": ["2025-01-01"] * 24,
             "hour_ending": list(range(1, 25)),
         }))
-        monkeypatch.setattr(main, "_latest_complete_delivery_rows", lambda df: df)
+        monkeypatch.setattr(dispatch_router, "latest_complete_delivery_rows", lambda df: df)
 
     def test_mining_schedule_endpoint(self, monkeypatch):
         self._setup_fakes(monkeypatch)
-        result = asyncio.run(main.dispatch_mining_schedule(settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_mining_schedule(settlement_point="HB_WEST"))
         assert result["status"] == "success"
         assert len(result["schedule"]) == 24
         assert "hours_to_run" in result["summary"]
@@ -312,18 +313,18 @@ class TestDispatchEndpoints:
 
     def test_mining_savings_endpoint(self, monkeypatch):
         self._setup_fakes(monkeypatch)
-        result = asyncio.run(main.dispatch_mining_savings(settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_mining_savings(settlement_point="HB_WEST"))
         assert result["status"] == "success"
         assert "expected_cost_savings" in result
         assert "savings_pct" in result
         assert result["always_on_cost"] > 0
 
     def test_alert_config_endpoint(self, monkeypatch):
-        req = main.AlertConfigRequest(
+        req = AlertConfigRequest(
             chat_ids=["12345"],
             spike_alert_threshold=0.85,
         )
-        result = asyncio.run(main.configure_alerts(req))
+        result = asyncio.run(dispatch_router.configure_alerts(req))
         assert result["status"] == "success"
         assert result["config"]["chat_ids_count"] == 1
         assert result["config"]["spike_alert_threshold"] == 0.85
@@ -331,6 +332,6 @@ class TestDispatchEndpoints:
     def test_schedule_all_cheap(self, monkeypatch):
         """When all prices are cheap, all hours should be ON."""
         self._setup_fakes(monkeypatch, dam_prices=[25.0] * 24)
-        result = asyncio.run(main.dispatch_mining_schedule(settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_mining_schedule(settlement_point="HB_WEST"))
         assert result["summary"]["hours_to_run"] == 24
         assert result["summary"]["hours_to_curtail"] == 0

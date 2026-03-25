@@ -14,7 +14,7 @@ from prediction.src.models.spike_v2_predictor import (
     _risk_level,
     get_spike_v2_predictor,
 )
-from prediction.src import main
+from prediction.src.routers import predictions
 
 
 # ---------------------------------------------------------------------------
@@ -257,9 +257,9 @@ def _make_fake_v2_predictor(predictions=None):
 class TestSpikeV2Endpoints:
     def test_single_sp_endpoint(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
-        result = asyncio.run(main.predict_spike_v2("HB_WEST"))
+        result = asyncio.run(predictions.predict_spike_v2("HB_WEST"))
         assert result["status"] == "success"
         assert result["probability"] == 0.75
         assert result["settlement_point"] == "HB_WEST"
@@ -269,9 +269,9 @@ class TestSpikeV2Endpoints:
 
     def test_all_endpoint_returns_sorted(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
-        result = asyncio.run(main.predict_spike_v2_all())
+        result = asyncio.run(predictions.predict_spike_v2_all())
         assert result["status"] == "success"
         assert result["count"] == 2
         preds = result["predictions"]
@@ -279,9 +279,9 @@ class TestSpikeV2Endpoints:
 
     def test_alerts_endpoint_filters(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
-        result = asyncio.run(main.predict_spike_v2_alerts())
+        result = asyncio.run(predictions.predict_spike_v2_alerts())
         assert result["status"] == "success"
         for alert in result["alerts"]:
             assert alert["probability"] >= 0.3
@@ -289,41 +289,41 @@ class TestSpikeV2Endpoints:
     def test_single_sp_not_loaded(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
         predictor.is_ready.return_value = False
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_spike_v2("HB_WEST"))
+            asyncio.run(predictions.predict_spike_v2("HB_WEST"))
         assert exc.value.status_code == 503
 
     def test_single_sp_missing_model(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
         predictor.has_model.return_value = False
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_spike_v2("HB_WEST"))
+            asyncio.run(predictions.predict_spike_v2("HB_WEST"))
         assert exc.value.status_code == 404
 
     def test_single_sp_data_error(self, monkeypatch):
         predictor = _make_fake_v2_predictor(
             predictions={"settlement_point": "HB_WEST", "error": "No feature data", "probability": None, "is_alert": False, "risk_level": "unknown"}
         )
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_spike_v2("HB_WEST"))
+            asyncio.run(predictions.predict_spike_v2("HB_WEST"))
         assert exc.value.status_code == 502
 
     def test_invalid_settlement_point(self, monkeypatch):
         predictor = _make_fake_v2_predictor()
-        monkeypatch.setattr(main, "get_spike_v2_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "get_spike_v2_predictor", lambda: predictor)
 
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_spike_v2("INVALID_SP"))
+            asyncio.run(predictions.predict_spike_v2("INVALID_SP"))
         assert exc.value.status_code == 400
 
     def test_existing_spike_v1_endpoint_still_works(self, monkeypatch):
@@ -339,10 +339,10 @@ class TestSpikeV2Endpoints:
             def predict(self, features_df, sp):
                 return [SpikeAlert(sp, 0.4, False, "low", 0.5, datetime.utcnow())]
 
-        monkeypatch.setattr(main, "get_spike_predictor", lambda: FakeV1Predictor())
-        monkeypatch.setattr(main, "_fetch_and_compute_features", lambda sp: pd.DataFrame({"a": [1]}))
+        monkeypatch.setattr(predictions, "get_spike_predictor", lambda: FakeV1Predictor())
+        monkeypatch.setattr(predictions, "fetch_and_compute_features", lambda sp: pd.DataFrame({"a": [1]}))
 
-        result = asyncio.run(main.predict_spike("HB_WEST"))
+        result = asyncio.run(predictions.predict_spike("HB_WEST"))
         assert result["status"] == "success"
         assert result["model"] == "Spike Detection CatBoost"
 

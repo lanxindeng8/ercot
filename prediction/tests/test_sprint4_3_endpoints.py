@@ -11,7 +11,8 @@ import pandas as pd
 import pytest
 from fastapi import HTTPException
 
-from prediction.src import main
+from prediction.src import helpers
+from prediction.src.routers import predictions, models as models_router, system
 from prediction.src.models.wind_predictor import WindPrediction
 from prediction.src.models.load_predictor import LoadPrediction, FEATURE_COLS
 from prediction.src.models.bess_predictor import BessScheduleEntry, BessScheduleResult
@@ -44,10 +45,10 @@ class TestWindEndpoint:
                 ]
 
         predictor = FakeWindPredictor()
-        monkeypatch.setattr(main, "get_wind_predictor", lambda: predictor)
-        monkeypatch.setattr(main, "_build_wind_features", lambda: pd.DataFrame({"hour": range(24)}))
+        monkeypatch.setattr(predictions, "get_wind_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "build_wind_features", lambda: pd.DataFrame({"hour": range(24)}))
 
-        result = asyncio.run(main.predict_wind())
+        result = asyncio.run(predictions.predict_wind())
 
         assert result["status"] == "success"
         assert result["model"] == "Wind GBM Quantile"
@@ -61,10 +62,10 @@ class TestWindEndpoint:
             def is_ready(self):
                 return False
 
-        monkeypatch.setattr(main, "get_wind_predictor", lambda: FakeWindPredictor())
+        monkeypatch.setattr(predictions, "get_wind_predictor", lambda: FakeWindPredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_wind())
+            asyncio.run(predictions.predict_wind())
         assert exc.value.status_code == 503
 
     def test_wind_model_info_endpoint(self, monkeypatch):
@@ -83,9 +84,9 @@ class TestWindEndpoint:
                     "feature_count": 57,
                 }
 
-        monkeypatch.setattr(main, "get_wind_predictor", lambda: FakeWindPredictor())
+        monkeypatch.setattr(models_router, "get_wind_predictor", lambda: FakeWindPredictor())
 
-        result = asyncio.run(main.wind_model_info())
+        result = asyncio.run(models_router.wind_model_info())
         assert result.model_name == "wind"
         assert result.status == "loaded"
         assert result.info["quantiles"] == [0.1, 0.5, 0.9]
@@ -112,10 +113,10 @@ class TestLoadEndpoint:
                 ]
 
         predictor = FakeLoadPredictor()
-        monkeypatch.setattr(main, "get_load_predictor", lambda: predictor)
-        monkeypatch.setattr(main, "_build_load_features", lambda: pd.DataFrame({col: [0.0] * 24 for col in FEATURE_COLS}))
+        monkeypatch.setattr(predictions, "get_load_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "build_load_features", lambda: pd.DataFrame({col: [0.0] * 24 for col in FEATURE_COLS}))
 
-        result = asyncio.run(main.predict_load())
+        result = asyncio.run(predictions.predict_load())
 
         assert result["status"] == "success"
         assert result["model"] == "Load CatBoost+LightGBM Ensemble"
@@ -127,10 +128,10 @@ class TestLoadEndpoint:
             def is_ready(self):
                 return False
 
-        monkeypatch.setattr(main, "get_load_predictor", lambda: FakeLoadPredictor())
+        monkeypatch.setattr(predictions, "get_load_predictor", lambda: FakeLoadPredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_load())
+            asyncio.run(predictions.predict_load())
         assert exc.value.status_code == 503
 
     def test_load_model_info_endpoint(self, monkeypatch):
@@ -149,9 +150,9 @@ class TestLoadEndpoint:
                     "feature_count": 35,
                 }
 
-        monkeypatch.setattr(main, "get_load_predictor", lambda: FakeLoadPredictor())
+        monkeypatch.setattr(models_router, "get_load_predictor", lambda: FakeLoadPredictor())
 
-        result = asyncio.run(main.load_model_info())
+        result = asyncio.run(models_router.load_model_info())
         assert result.model_name == "load"
         assert result.status == "loaded"
 
@@ -224,14 +225,14 @@ class TestBessEndpoint:
             "hour_of_day": list(range(24)),
         })
 
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
-        monkeypatch.setattr(main, "_fetch_and_compute_features", lambda sp: features)
+        monkeypatch.setattr(predictions, "get_dam_v2_predictor", lambda: FakeDamPredictor())
+        monkeypatch.setattr(predictions, "get_bess_predictor", lambda: FakeBessPredictor())
+        monkeypatch.setattr(predictions, "fetch_and_compute_features", lambda sp: features)
 
     def test_predict_bess_returns_schedule_with_revenue(self, monkeypatch):
         self._make_bess_mocks(monkeypatch)
 
-        result = asyncio.run(main.predict_bess(settlement_point="HB_WEST"))
+        result = asyncio.run(predictions.predict_bess(settlement_point="HB_WEST"))
 
         assert result["status"] == "success"
         assert result["model"] == "BESS LP Optimizer"
@@ -246,11 +247,11 @@ class TestBessEndpoint:
             def is_ready(self):
                 return False
 
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: type("B", (), {"is_ready": lambda self: True})())
+        monkeypatch.setattr(predictions, "get_dam_v2_predictor", lambda: FakeDamPredictor())
+        monkeypatch.setattr(predictions, "get_bess_predictor", lambda: type("B", (), {"is_ready": lambda self: True})())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_bess(settlement_point="HB_WEST"))
+            asyncio.run(predictions.predict_bess(settlement_point="HB_WEST"))
         assert exc.value.status_code == 503
 
     def test_predict_bess_503_when_optimizer_not_loaded(self, monkeypatch):
@@ -269,11 +270,11 @@ class TestBessEndpoint:
             def is_ready(self):
                 return False
 
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
+        monkeypatch.setattr(predictions, "get_dam_v2_predictor", lambda: FakeDamPredictor())
+        monkeypatch.setattr(predictions, "get_bess_predictor", lambda: FakeBessPredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_bess(settlement_point="HB_WEST"))
+            asyncio.run(predictions.predict_bess(settlement_point="HB_WEST"))
         assert exc.value.status_code == 503
 
     def test_bess_model_info_endpoint(self, monkeypatch):
@@ -292,9 +293,9 @@ class TestBessEndpoint:
                     "battery_config": {"E_max_mwh": 10.0},
                 }
 
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
+        monkeypatch.setattr(models_router, "get_bess_predictor", lambda: FakeBessPredictor())
 
-        result = asyncio.run(main.bess_model_info())
+        result = asyncio.run(models_router.bess_model_info())
         assert result.model_name == "bess"
         assert result.status == "loaded"
 
@@ -318,11 +319,11 @@ class TestBessEndpoint:
             def missing_model_message(self, sp):
                 return f"No model for {sp}"
 
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDamPredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBessPredictor())
+        monkeypatch.setattr(predictions, "get_dam_v2_predictor", lambda: FakeDamPredictor())
+        monkeypatch.setattr(predictions, "get_bess_predictor", lambda: FakeBessPredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_bess(settlement_point="FAKE_NODE"))
+            asyncio.run(predictions.predict_bess(settlement_point="FAKE_NODE"))
         assert exc.value.status_code == 400
 
 
@@ -354,15 +355,15 @@ class TestHealthWithNewModels:
                 }
 
         fake = FakePredictor()
-        monkeypatch.setattr(main, "get_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_rtm_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_spike_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_wind_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_load_predictor", lambda: fake)
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_dam_v2_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_rtm_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_spike_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_wind_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_load_predictor", lambda: fake)
+        monkeypatch.setattr(system, "get_bess_predictor", lambda: fake)
 
-        result = asyncio.run(main.health_check())
+        result = asyncio.run(system.health_check())
 
         model_names = [m.name for m in result.models]
         assert "wind" in model_names
@@ -384,17 +385,17 @@ class TestFeatureBuilders:
                 return {"feature_names": ["hour", "hour_sin", "hour_cos", "is_weekend"]}
 
         monkeypatch.setattr(
-            "prediction.src.main.get_wind_predictor",
+            "prediction.src.models.wind_predictor.get_wind_predictor",
             lambda: FakeWindPredictor(),
         )
 
-        df = main._build_wind_features()
+        df = helpers.build_wind_features()
         assert len(df) == 24
         assert "hour" in df.columns
         assert "hour_sin" in df.columns
 
     def test_build_load_features_returns_24_rows_with_all_columns(self):
-        df = main._build_load_features()
+        df = helpers.build_load_features()
         assert len(df) == 24
         for col in FEATURE_COLS:
             assert col in df.columns, f"Missing column: {col}"
@@ -406,7 +407,7 @@ class TestFeatureBuilders:
             "value": list(range(36)),
         })
 
-        result = main._latest_complete_delivery_rows(df)
+        result = helpers.latest_complete_delivery_rows(df)
         assert len(result) == 24
         assert result["delivery_date"].nunique() == 1
         assert result["delivery_date"].iloc[0] == "2025-01-01"

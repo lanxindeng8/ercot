@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 from fastapi import HTTPException
 
-from prediction.src import main
+from prediction.src import helpers
+from prediction.src.routers import predictions
 from prediction.src.models.spike_predictor import SpikeAlert
 
 
@@ -28,17 +29,17 @@ def _market_frame(column: str) -> pd.DataFrame:
 
 class TestValidationHelpers:
     def test_normalize_settlement_point_preserves_load_zone(self):
-        assert main._normalize_settlement_point("lz_west") == "LZ_WEST"
+        assert helpers.normalize_settlement_point("lz_west") == "LZ_WEST"
 
     def test_normalize_settlement_point_rejects_unsupported_values(self):
         with pytest.raises(HTTPException) as exc:
-            main._normalize_settlement_point("HB_WEST'; DROP TABLE dam_lmp;--")
+            helpers.normalize_settlement_point("HB_WEST'; DROP TABLE dam_lmp;--")
 
         assert exc.value.status_code == 400
 
     def test_parse_horizons_rejects_invalid_values(self):
         with pytest.raises(HTTPException) as exc:
-            main._parse_horizons("1h,2h")
+            helpers.parse_horizons("1h,2h")
 
         assert exc.value.status_code == 400
         assert "Unsupported horizons" in exc.value.detail
@@ -71,7 +72,7 @@ class TestFeatureFetching:
             types.SimpleNamespace(create_fetcher_from_env=lambda: fake_fetcher),
         )
         monkeypatch.setattr(
-            main,
+            helpers,
             "compute_features",
             lambda dam_hourly, rtm_hourly: pd.DataFrame(
                 {
@@ -83,12 +84,12 @@ class TestFeatureFetching:
 
         # Make SQLite path fail so it falls through to InfluxDB
         monkeypatch.setattr(
-            main,
+            helpers,
             "_try_sqlite_features",
             lambda sp: None,
         )
 
-        features = main._fetch_and_compute_features("HB_WEST")
+        features = helpers.fetch_and_compute_features("HB_WEST")
 
         assert not features.empty
         assert fake_fetcher.closed is True
@@ -125,7 +126,7 @@ class TestFeatureFetching:
             types.SimpleNamespace(create_sqlite_fetcher=lambda: FakeFetcher()),
         )
 
-        assert main._try_sqlite_features("HB_WEST") is None
+        assert helpers._try_sqlite_features("HB_WEST") is None
 
     def test_raw_to_hourly_preserves_sqlite_local_hours(self):
         dam_index = pd.to_datetime(["2025-01-01 06:00:00", "2025-01-01 07:00:00"])
@@ -150,7 +151,7 @@ class TestFeatureFetching:
         )
         rtm_raw.index.name = "timestamp"
 
-        dam_hourly, rtm_hourly = main._raw_to_hourly(dam_raw, rtm_raw)
+        dam_hourly, rtm_hourly = helpers._raw_to_hourly(dam_raw, rtm_raw)
 
         assert dam_hourly["hour_ending"].tolist() == [1, 2]
         assert rtm_hourly["hour_ending"].tolist() == [1, 2]
@@ -186,10 +187,10 @@ class TestEndpoints:
         predictor = FakePredictor()
         feature_frame = pd.DataFrame({"hour_of_day": [1, 2, 3]})
 
-        monkeypatch.setattr(main, "get_spike_predictor", lambda: predictor)
-        monkeypatch.setattr(main, "_fetch_and_compute_features", lambda settlement_point: feature_frame)
+        monkeypatch.setattr(predictions, "get_spike_predictor", lambda: predictor)
+        monkeypatch.setattr(predictions, "fetch_and_compute_features", lambda settlement_point: feature_frame)
 
-        result = asyncio.run(main.predict_spike("LZ_WEST"))
+        result = asyncio.run(predictions.predict_spike("LZ_WEST"))
 
         assert result["settlement_point"] == "LZ_WEST"
         assert result["alert"]["spike_probability"] == 0.9
@@ -206,10 +207,10 @@ class TestEndpoints:
                     "multiclass_loaded": False,
                 }
 
-        monkeypatch.setattr(main, "get_predictor", lambda: FakePredictor())
+        monkeypatch.setattr(predictions, "get_predictor", lambda: FakePredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_delta_spread(settlement_point="LZ_WEST"))
+            asyncio.run(predictions.predict_delta_spread(settlement_point="LZ_WEST"))
 
         assert exc.value.status_code == 503
 
@@ -222,10 +223,10 @@ class TestEndpoints:
                     "multiclass_loaded": True,
                 }
 
-        monkeypatch.setattr(main, "get_predictor", lambda: FakePredictor())
+        monkeypatch.setattr(predictions, "get_predictor", lambda: FakePredictor())
 
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(main.predict_delta_spread(settlement_point="LZ_WEST"))
+            asyncio.run(predictions.predict_delta_spread(settlement_point="LZ_WEST"))
 
         assert exc.value.status_code == 503
         assert "synthetic random features" in exc.value.detail

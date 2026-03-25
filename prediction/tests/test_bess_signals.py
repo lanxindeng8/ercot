@@ -23,7 +23,7 @@ from prediction.src.dispatch.bess_signals import (
     _ensure_pnl_db,
     BESS_DB,
 )
-from prediction.src import main
+from prediction.src.routers import dispatch as dispatch_router
 
 
 # ---------------------------------------------------------------------------
@@ -437,14 +437,14 @@ class TestBessDispatchEndpoints:
                     sched.append(BessScheduleEntry(h + 1, action, power, 50.0, prices[h]))
                 return BessScheduleResult(sched, 250.0, "Optimal", 0.02, {})
 
-        monkeypatch.setattr(main, "get_dam_v2_predictor", lambda: FakeDAMPredictor())
-        monkeypatch.setattr(main, "get_spike_predictor", lambda: FakeSpikePredictor())
-        monkeypatch.setattr(main, "get_bess_predictor", lambda: FakeBESSPredictor())
-        monkeypatch.setattr(main, "_fetch_and_compute_features", lambda sp: pd.DataFrame({
+        monkeypatch.setattr(dispatch_router, "get_dam_v2_predictor", lambda: FakeDAMPredictor())
+        monkeypatch.setattr(dispatch_router, "get_spike_predictor", lambda: FakeSpikePredictor())
+        monkeypatch.setattr(dispatch_router, "get_bess_predictor", lambda: FakeBESSPredictor())
+        monkeypatch.setattr(dispatch_router, "fetch_and_compute_features", lambda sp: pd.DataFrame({
             "delivery_date": ["2025-01-01"] * 24,
             "hour_ending": list(range(1, 25)),
         }))
-        monkeypatch.setattr(main, "_latest_complete_delivery_rows", lambda df: df)
+        monkeypatch.setattr(dispatch_router, "latest_complete_delivery_rows", lambda df: df)
 
         # Point PnL DB to temp
         temp_db = tmp_path / "bess_pnl.db"
@@ -453,7 +453,7 @@ class TestBessDispatchEndpoints:
 
     def test_daily_signals_endpoint(self, monkeypatch, tmp_path):
         self._setup_fakes(monkeypatch, tmp_path)
-        result = asyncio.run(main.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
 
         assert result["status"] == "success"
         assert len(result["signals"]) == 24
@@ -463,7 +463,7 @@ class TestBessDispatchEndpoints:
 
     def test_daily_signals_has_risk_flags(self, monkeypatch, tmp_path):
         self._setup_fakes(monkeypatch, tmp_path)
-        result = asyncio.run(main.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
 
         for sig in result["signals"]:
             assert "risk_flag" in sig
@@ -474,9 +474,9 @@ class TestBessDispatchEndpoints:
         self._setup_fakes(monkeypatch, tmp_path)
 
         # First generate signals to record PnL
-        asyncio.run(main.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
+        asyncio.run(dispatch_router.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
 
-        result = asyncio.run(main.dispatch_bess_pnl(days=7, settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_bess_pnl(days=7, settlement_point="HB_WEST"))
         assert result["status"] == "success"
         assert "summary" in result
         assert "daily" in result
@@ -485,7 +485,7 @@ class TestBessDispatchEndpoints:
     def test_risk_endpoint(self, monkeypatch, tmp_path):
         self._setup_fakes(monkeypatch, tmp_path)
 
-        result = asyncio.run(main.dispatch_bess_risk(days=30, settlement_point="HB_WEST"))
+        result = asyncio.run(dispatch_router.dispatch_bess_risk(days=30, settlement_point="HB_WEST"))
         assert result["status"] == "success"
         assert "risk" in result
         assert "var_95" in result["risk"]
@@ -496,8 +496,8 @@ class TestBessDispatchEndpoints:
     def test_pnl_recorded_after_signals(self, monkeypatch, tmp_path):
         """Calling daily-signals should auto-record PnL."""
         self._setup_fakes(monkeypatch, tmp_path)
-        asyncio.run(main.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
+        asyncio.run(dispatch_router.dispatch_bess_daily_signals(settlement_point="HB_WEST"))
 
-        pnl_result = asyncio.run(main.dispatch_bess_pnl(days=7, settlement_point="HB_WEST"))
+        pnl_result = asyncio.run(dispatch_router.dispatch_bess_pnl(days=7, settlement_point="HB_WEST"))
         assert pnl_result["days_available"] >= 1
         assert pnl_result["summary"]["total_pnl"] != 0
