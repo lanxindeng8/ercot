@@ -101,16 +101,13 @@ Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 
 |---|---|---|
 | 2016-2025 | 1,056,444 | 每年 ~106K 行，连续完整 |
 
-### Wind Forecast — 还缺 7 个月
-| 有数据 | 缺失 |
-|---|---|
-| 33 个月 (2022-12 → 2025-11) | `2024-04, 2024-05, 2024-07, 2025-12, 2026-01, 2026-02, 2026-03` |
+### Wind Forecast ✅ 完整
+| 范围 | 行数 | 状态 |
+|---|---|---|
+| 2022-12 → 2026-03 (40 months) | 113,924 | 完整，无缺口 |
 
-**补全方案（已实施）**:
-- OpenClaw cron job `wind-forecast-backfill`，每 1 小时触发
-- 脚本 `prediction/scripts/fetch_wind_one_month.py`：找第一个缺失月 → 拉一个月 → 429 就放弃等下次
-- 全部补完后自动删除 cron job
-- 预计 7 小时内补完（每小时 1 个月）
+通过 OpenClaw cron job `wind-forecast-backfill` 自动补完（每小时拉一批直到 429，下一小时继续）。
+Cron job 完成后已自动删除。脚本保留在 `prediction/scripts/fetch_wind_one_month.py` 供未来使用。
 
 ## Cron Jobs
 
@@ -125,6 +122,6 @@ Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 
 
 - [ ] 获取第二个 subscription key（如果 ERCOT 允许多 key）
 - [ ] 实现请求配额池：所有 job 共享一个令牌桶，防并发超限
-- [ ] 检查 NP4-732-CD 是否有 archive endpoint（待 429 配额恢复后查）
+- [x] ~~检查 NP4-732-CD 是否有 archive endpoint~~ — 未能验证（429 阻断），但 data API 已够用
 - [ ] RTM scraper 降频到 15 分钟 + 加退避
 - [ ] 退避策略调整：429 后不做长退避，直接放弃等下个小时（匹配 hourly quota reset）

@@ -2,6 +2,9 @@
 
 > 基于 Lanxin 的讨论文档 (2025-12-14 晚高峰 LZ_CPS spike 案例)
 > 调研日期: 2026-03-19
+> 最后更新: 2026-03-25
+>
+> **状态**: Phase 0 ✅ + Phase 1 ✅ 完成。GBM baseline + Optuna tuned models deployed.
 
 ---
 
@@ -23,27 +26,28 @@
 2. **Fuel mix 数据断在 2024-12-31**，缺最近 3 个月。需要恢复或补爬。
 3. **2025-12-14 案例日**：RTM hist 有数据，DAM hist 有数据。LZ_CPS spike 确认存在（Hour 21: $686.2 max, $630.8 avg）。Houston 同期仅 $97.7。区域性特征极明显。
 
-### ❌ 完全缺失的数据
+### 数据获取状态 (2026-03-25 更新)
 
-| 文档要求 | ERCOT 数据产品 | 状态 | 获取难度 |
-|---------|---------------|------|---------|
-| **RT Reserve Margin (PRC)** | NP6-323-CD (实时), NP6-792-ER (历史周报) | 未爬 | 🟡 中等 — ERCOT Public API 有，需写爬虫 |
-| **ORDC Price Adders** | NP6-323-CD / NP6-792-ER | 未爬 | 🟡 同上（同一 report） |
-| **Binding Constraints / Shadow Prices** | NP6-86-CD (实时 SCED 级) | 未爬 | 🟡 中等 — 公开数据，但数据量大（每 SCED interval ~5min） |
-| **Wind Forecast (STWPF)** | NP4-732-CD | 未爬 | 🟡 中等 — 每小时更新，含 48h 历史 + 168h 预测 |
-| **Wind Forecast Error** | 需要 NP4-732-CD 的 forecast vs fuel_mix 的 actual | 计算得出 | 🟢 有 actual（fuel_mix），缺 forecast |
-| **Zone-level 天气数据** | NOAA HRRR (3km 分辨率) 或 Open-Meteo API | 未接入 | 🟢 容易 — Herbie 库 (`pip install herbie-data`) 或 Open-Meteo 免费 API |
-| **System Load Forecast vs Actual** | NP3-233-CD (DAM load forecast) / NP3-565-CD (7-day STLF) | 未爬 | 🟡 中等 |
-| **Net Load** | 计算得出：Total Load - Wind - Solar | 🟢 有原料 | 从 fuel_mix 计算 |
+| 文档要求 | ERCOT 数据产品 | 状态 | 说明 |
+|---------|---------------|------|------|
+| **RT Reserve Margin (PRC)** | NP6-792-ER | ✅ 已获取 | 1,056,444 rows, 2016-2025 连续 |
+| **ORDC Price Adders** | NP6-792-ER | ✅ 已获取 | 同上（同一 report） |
+| **Zone-level 天气数据** | Open-Meteo Archive | ✅ 已获取 | 589,680 rows, 6 stations, 2015-2026 |
+| **Wind Forecast (STWPF)** | NP4-732-CD | ✅ 已获取 | 113,924 rows, 2022-12 → 2026-03 |
+| **Wind Forecast Error** | GEN vs STWPF | ✅ 可计算 | 数据已齐 |
+| **Net Load** | fuel_mix 计算 | ✅ 可计算 | Total Load - Wind - Solar |
+| **Binding Constraints** | NP6-86-CD | ❌ 放弃 | 数据量太大（100K+ files/year），用 zone-hub spread 近似 |
+| **System Load Forecast** | NP3-565-CD | ⏳ 未获取 | Phase 2 需要时再爬 |
 
-### ❌ 模型架构缺失
+### 模型架构状态 (2026-03-25 更新)
 
 | 文档要求 | 当前状态 |
 |---------|---------|
-| CfC / LTC / Neural ODE | 完全没有。当前只有 CatBoost/LightGBM |
-| Zone-level Regime Switching | 没有。当前 Spike 是 system-wide binary |
-| 三层标签 (SpikeEvent / LeadSpike / Regime) | 没有。当前标签是简单阈值 |
-| 5min 级预测频率 | 没有。当前是小时级 |
+| CfC / LTC / Neural ODE | ⏳ Phase 2+。当前用 LightGBM baseline |
+| Zone-level Regime Switching | ✅ 三层标签已实现 (SpikeEvent/LeadSpike/Regime) |
+| 三层标签 | ✅ 完成。5.3M labels, validated with 2025-12-14 case |
+| Zone-level Spike Models | ✅ 14 SP, Optuna tuned, PR-AUC +0.22 |
+| 5min 级预测频率 | ⏳ 训练用 15min, 生产可用 5min（待 Phase 2） |
 
 ---
 

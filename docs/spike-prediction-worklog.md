@@ -198,24 +198,41 @@ CREATE TABLE rt_reserves (
 
 ## 执行记录
 
-### Step 0.1: 目录结构 ✅
-- Kira 自己做，commit `57aec0a`
+### Phase 0: 数据获取基础设施 ✅ (2026-03-19)
 
-### Step 0.2: Open-Meteo 天气数据 ✅ → 🔧 Codex Review 修复中
-- CC 写完 (session `glow-daisy`): 5 文件，29 tests pass
-- Codex review (session `mellow-falcon`) 发现 6 个问题:
-  1. 🔴 Wind Chill 输出华氏度（应为摄氏度）
-  2. 🔴 DST 时间冲突 — local time PK 在 fall-back 丢数据
-  3. 🔴 shift(1) 是 row-based，DST 日变成 2h delta
-  4. 🟡 API 错误无容错
-  5. 🟡 INSERT OR REPLACE 语义不对
-  6. 🟡 测试太弱
-- CC 修复中 (session `crisp-cedar`)
+| Step | 内容 | 状态 | Commit |
+|------|------|------|--------|
+| 0.1 | 目录结构 | ✅ 完成 | `57aec0a` |
+| 0.2 | Open-Meteo 天气数据 | ✅ 完成 | 589,680 rows, 6 stations × 2015-2026 |
+| 0.3 | Wind Forecast (NP4-732-CD) | ✅ 完成 | 113,924 rows, 2022-12 → 2026-03 |
+| 0.4 | RT Reserves (NP6-792-ER) | ✅ 完成 | 1,056,444 rows, 2016-2025 连续 |
 
-### Step 0.3: Wind Forecast 数据 ✅ → 待 Codex Review
-- CC 写完 (session `faint-orbit`): 3 文件，13 tests pass
-- 待 Codex review
+### Phase 1: Zone-Level Spike V2 ✅ (2026-03-19~22)
 
-### Step 0.4: RT Reserves 数据 — 任务已规划，待启动
+| Step | 内容 | 状态 | 说明 |
+|------|------|------|------|
+| 1.1 | 三层标签 (SpikeEvent/LeadSpike/Regime) | ✅ 完成 | 5.3M labels, validated with 2025-12-14 LZ_CPS case |
+| 1.2 | Feature engineering v2 | ✅ 完成 | 30 spike-specific features |
+| 1.3 | LightGBM baseline training | ✅ 完成 | 14 SP models, avg ROC-AUC 0.93, 97% event recall |
+| 1.4 | Optuna tuning | ✅ 完成 | 50 trials/SP, avg PR-AUC +0.22 over baseline |
+| 1.5 | API integration | ✅ 完成 | 3 endpoints + `/predict/spike/v2/all` |
+| 1.6 | Predictor → tuned models | ✅ 完成 | Commit `7403672` |
 
-### Step 0.5: 验证 — 用 2025-12-14 案例日检查所有数据对齐
+### Ops: RTM Retrain + Infrastructure (2026-03-22~23)
+
+| Task | 状态 | 说明 |
+|------|------|------|
+| RTM retrain 80 features | ✅ 完成 | 15 SP × 3 horizons. 17 improved, 18 regressed. See `docs/rtm-retrain-80features-report.md` |
+| Localhost auth bypass | ✅ 完成 | prediction-runner 401 修复 |
+| Data backfill (reserves) | ✅ 完成 | 2020-2023 补全, 1.1M rows total |
+| Data backfill (wind) | ✅ 完成 | cron 滴灌补完, 40 months / 0 gaps |
+| ERCOT 429 修复 | ✅ 完成 | urllib3 移除 429, 自有退避 10s+jitter, 5min cap |
+| LaunchAgent 重构 | ✅ 完成 | 9→7 jobs, RTM CDR/API 分离, DAM pipeline 合并 |
+
+### 教训
+
+1. **ERCOT archive 文件名 ≠ 数据年份** — `_2023.xlsx` 里是 2022 数据。必须验证 timestamp
+2. **urllib3 Retry 429 是灾难** — 快速重试耗尽 hourly bandwidth。429 只用自己的退避
+3. **ERCOT 限的是 hourly bandwidth** — 不是请求频率。配额每小时重置
+4. **80 features 对 24h 预测可能引入噪声** — 1h 改善但 24h 回退。需要 horizon-aware feature selection
+5. **并发 fetch 秒触 429** — 串行 + cron 滴灌（每小时一批）是唯一可靠方式
