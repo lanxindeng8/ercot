@@ -1,5 +1,5 @@
 """
-测试特征工程模块
+Tests for the feature engineering module
 """
 
 import sys
@@ -21,10 +21,10 @@ from src.data.feature_engineering import (
 
 
 class TestPriceStructureFeatures(unittest.TestCase):
-    """测试价格结构特征"""
+    """Test price structure features"""
 
     def setUp(self):
-        """准备测试数据"""
+        """Prepare test data"""
         timestamps = pd.date_range(start='2025-12-14', periods=100, freq='5min')
         self.df = pd.DataFrame({
             'P_CPS': np.random.uniform(50, 200, 100),
@@ -37,27 +37,27 @@ class TestPriceStructureFeatures(unittest.TestCase):
         }, index=timestamps)
 
     def test_calculate_features(self):
-        """测试特征计算"""
+        """Test feature computation"""
         features = PriceStructureFeatures.calculate(self.df)
 
-        # 检查返回类型
+        # Check return type
         self.assertIsInstance(features, pd.DataFrame)
 
-        # 检查特征列存在
+        # Check feature columns exist
         self.assertIn('spread_CPS_hub', features.columns)
         self.assertIn('spread_rt_da_CPS', features.columns)
         self.assertIn('price_ramp_5m_CPS', features.columns)
         self.assertIn('price_accel_CPS', features.columns)
         self.assertIn('spread_CPS_Houston', features.columns)
 
-        # 检查数据维度
+        # Check data dimensions
         self.assertEqual(len(features), len(self.df))
 
     def test_spread_calculation(self):
-        """测试价差计算"""
+        """Test spread calculation"""
         features = PriceStructureFeatures.calculate(self.df)
 
-        # 验证价差计算正确性
+        # Verify spread calculation correctness
         expected_spread = self.df['P_CPS'] - self.df['P_Hub']
         pd.testing.assert_series_equal(
             features['spread_CPS_hub'],
@@ -67,10 +67,10 @@ class TestPriceStructureFeatures(unittest.TestCase):
 
 
 class TestSupplyDemandFeatures(unittest.TestCase):
-    """测试供需平衡特征"""
+    """Test supply-demand balance features"""
 
     def setUp(self):
-        """准备测试数据"""
+        """Prepare test data"""
         timestamps = pd.date_range(start='2025-12-14', periods=1000, freq='5min')
         self.df = pd.DataFrame({
             'Load': np.random.uniform(35000, 45000, 1000),
@@ -82,13 +82,13 @@ class TestSupplyDemandFeatures(unittest.TestCase):
         }, index=timestamps)
 
     def test_calculate_features(self):
-        """测试特征计算"""
+        """Test feature computation"""
         features = SupplyDemandFeatures.calculate(self.df, lookback_days=7)
 
-        # 检查返回类型
+        # Check return type
         self.assertIsInstance(features, pd.DataFrame)
 
-        # 检查特征列存在
+        # Check feature columns exist
         self.assertIn('net_load', features.columns)
         self.assertIn('wind_anomaly', features.columns)
         self.assertIn('gas_saturation', features.columns)
@@ -96,10 +96,10 @@ class TestSupplyDemandFeatures(unittest.TestCase):
         self.assertIn('esr_net_output', features.columns)
 
     def test_net_load_calculation(self):
-        """测试净负荷计算"""
+        """Test net load calculation"""
         features = SupplyDemandFeatures.calculate(self.df)
 
-        # 验证净负荷计算
+        # Verify net load calculation
         expected_net_load = self.df['Load'] - self.df['Wind'] - self.df['Solar']
         pd.testing.assert_series_equal(
             features['net_load'],
@@ -108,18 +108,18 @@ class TestSupplyDemandFeatures(unittest.TestCase):
         )
 
     def test_coal_stress(self):
-        """测试煤电压力标志"""
+        """Test coal stress flag"""
         features = SupplyDemandFeatures.calculate(self.df)
 
-        # 煤电压力应该是 0 或 1
+        # Coal stress should be 0 or 1
         self.assertTrue(features['coal_stress'].isin([0, 1]).all())
 
 
 class TestWeatherFeatures(unittest.TestCase):
-    """测试天气驱动特征"""
+    """Test weather-driven features"""
 
     def setUp(self):
-        """准备测试数据"""
+        """Prepare test data"""
         timestamps = pd.date_range(start='2025-12-14', periods=500, freq='15min')
         self.df = pd.DataFrame({
             'T_CPS': np.random.uniform(50, 80, 500),
@@ -134,83 +134,83 @@ class TestWeatherFeatures(unittest.TestCase):
         }, index=timestamps)
 
     def test_calculate_features(self):
-        """测试特征计算"""
+        """Test feature computation"""
         features = WeatherFeatures.calculate(self.df)
 
-        # 检查返回类型
+        # Check return type
         self.assertIsInstance(features, pd.DataFrame)
 
-        # 检查特征列存在
+        # Check feature columns exist
         self.assertIn('T_anomaly_CPS', features.columns)
         self.assertIn('T_ramp_CPS', features.columns)
         self.assertIn('WindChill_CPS', features.columns)
         self.assertIn('ColdFront_CPS', features.columns)
 
     def test_wind_chill_calculation(self):
-        """测试风寒指数计算"""
+        """Test wind chill index calculation"""
         features = WeatherFeatures.calculate(self.df)
 
-        # 风寒指数不应该有 NaN（除非输入数据有 NaN）
+        # Wind chill index should not have NaN (unless input data has NaN)
         self.assertFalse(features['WindChill_CPS'].isna().any())
 
     def test_cold_front_flag(self):
-        """测试冷锋标志"""
+        """Test cold front flag"""
         features = WeatherFeatures.calculate(self.df)
 
-        # 冷锋标志应该是 0 或 1
+        # Cold front flag should be 0 or 1
         self.assertTrue(features['ColdFront_CPS'].isin([0, 1]).all())
 
 
 class TestTemporalFeatures(unittest.TestCase):
-    """测试时间特征"""
+    """Test temporal features"""
 
     def setUp(self):
-        """准备测试数据"""
-        timestamps = pd.date_range(start='2025-12-14', periods=288, freq='5min')  # 1天
+        """Prepare test data"""
+        timestamps = pd.date_range(start='2025-12-14', periods=288, freq='5min')  # 1 day
         self.df = pd.DataFrame({
             'Solar': np.random.uniform(0, 8000, 288),
         }, index=timestamps)
 
     def test_calculate_features(self):
-        """测试特征计算"""
+        """Test feature computation"""
         features = TemporalFeatures.calculate(self.df)
 
-        # 检查返回类型
+        # Check return type
         self.assertIsInstance(features, pd.DataFrame)
 
-        # 检查特征列存在
+        # Check feature columns exist
         self.assertIn('hour', features.columns)
         self.assertIn('is_evening_peak', features.columns)
         self.assertIn('minutes_to_sunrise', features.columns)
 
     def test_hour_range(self):
-        """测试小时范围"""
+        """Test hour range"""
         features = TemporalFeatures.calculate(self.df)
 
-        # 小时应该在 0-23 范围内
+        # Hour should be in the range 0-23
         self.assertTrue((features['hour'] >= 0).all())
         self.assertTrue((features['hour'] <= 23).all())
 
     def test_evening_peak_flag(self):
-        """测试晚高峰标志"""
+        """Test evening peak flag"""
         features = TemporalFeatures.calculate(self.df)
 
-        # 晚高峰标志应该是 0 或 1
+        # Evening peak flag should be 0 or 1
         self.assertTrue(features['is_evening_peak'].isin([0, 1]).all())
 
-        # 验证晚高峰时段
+        # Verify evening peak hours
         peak_hours = features[features['is_evening_peak'] == 1]['hour'].unique()
         self.assertTrue(all(h in range(17, 23) for h in peak_hours))
 
 
 class TestFeatureEngineer(unittest.TestCase):
-    """测试特征工程主类"""
+    """Test feature engineering main class"""
 
     def setUp(self):
-        """准备完整测试数据"""
+        """Prepare complete test data"""
         timestamps = pd.date_range(start='2025-12-14', periods=500, freq='5min')
         self.df = pd.DataFrame({
-            # 价格数据
+            # Price data
             'P_CPS': np.random.uniform(50, 200, 500),
             'P_West': np.random.uniform(50, 200, 500),
             'P_Houston': np.random.uniform(50, 200, 500),
@@ -219,7 +219,7 @@ class TestFeatureEngineer(unittest.TestCase):
             'P_West_DA': np.random.uniform(50, 150, 500),
             'P_Houston_DA': np.random.uniform(50, 150, 500),
 
-            # 系统数据
+            # System data
             'Load': np.random.uniform(35000, 45000, 500),
             'Wind': np.random.uniform(5000, 12000, 500),
             'Solar': np.random.uniform(0, 8000, 500),
@@ -227,7 +227,7 @@ class TestFeatureEngineer(unittest.TestCase):
             'Coal': np.random.uniform(7000, 9000, 500),
             'ESR': np.random.uniform(-2000, 2000, 500),
 
-            # 天气数据
+            # Weather data
             'T_CPS': np.random.uniform(50, 80, 500),
             'T_West': np.random.uniform(50, 80, 500),
             'T_Houston': np.random.uniform(55, 85, 500),
@@ -240,46 +240,46 @@ class TestFeatureEngineer(unittest.TestCase):
         }, index=timestamps)
 
     def test_calculate_all_features(self):
-        """测试计算所有特征"""
+        """Test computing all features"""
         engineer = FeatureEngineer(zones=['CPS', 'West', 'Houston'])
         result = engineer.calculate_all_features(self.df)
 
-        # 检查返回类型
+        # Check return type
         self.assertIsInstance(result, pd.DataFrame)
 
-        # 检查原始列保留
+        # Check original columns are preserved
         for col in self.df.columns:
             self.assertIn(col, result.columns)
 
-        # 检查特征列存在
+        # Check feature columns exist
         self.assertIn('spread_CPS_hub', result.columns)
         self.assertIn('net_load', result.columns)
         self.assertIn('T_anomaly_CPS', result.columns)
         self.assertIn('hour', result.columns)
 
     def test_get_feature_names(self):
-        """测试获取特征名称"""
+        """Test getting feature names"""
         engineer = FeatureEngineer(zones=['CPS', 'West', 'Houston'])
 
-        # 获取各类特征名称
+        # Get feature names by type
         price_features = engineer.get_feature_names('price')
         supply_features = engineer.get_feature_names('supply_demand')
         weather_features = engineer.get_feature_names('weather')
         temporal_features = engineer.get_feature_names('temporal')
 
-        # 检查类型
+        # Check types
         self.assertIsInstance(price_features, list)
         self.assertIsInstance(supply_features, list)
         self.assertIsInstance(weather_features, list)
         self.assertIsInstance(temporal_features, list)
 
-        # 检查特征数量
+        # Check feature counts
         self.assertGreater(len(price_features), 0)
         self.assertGreater(len(supply_features), 0)
         self.assertGreater(len(weather_features), 0)
         self.assertGreater(len(temporal_features), 0)
 
-        # 获取所有特征
+        # Get all features
         all_features = engineer.get_feature_names()
         total = len(price_features) + len(supply_features) + len(weather_features) + len(temporal_features)
         self.assertEqual(len(all_features), total)

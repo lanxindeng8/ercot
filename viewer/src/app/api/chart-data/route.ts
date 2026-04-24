@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryRtmLmpData, queryDamLmpData, queryDamPredictions } from "@/lib/influxdb";
+import { queryRtmLmpData, queryDamLmpData, queryDamPredictions, queryRtmPredictions } from "@/lib/influxdb";
 import { getToday } from "@/lib/utils";
 
 const CHART_SETTLEMENT_POINT = "LZ_WEST";
@@ -9,6 +9,7 @@ interface ChartDataPoint {
   rtmActual: number | null;
   damActual: number | null;
   damPred: number | null;
+  rtmPred: number | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -16,11 +17,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date") || getToday();
 
-    // Fetch RTM, DAM, and DAM predictions in parallel
-    const [rtmRecords, damRecords, damPredictions] = await Promise.all([
+    // Fetch RTM, DAM, and predictions in parallel
+    const [rtmRecords, damRecords, damPredictions, rtmPredictions] = await Promise.all([
       queryRtmLmpData(date, [CHART_SETTLEMENT_POINT]),
       queryDamLmpData(date, [CHART_SETTLEMENT_POINT]),
       queryDamPredictions(date, [CHART_SETTLEMENT_POINT]),
+      queryRtmPredictions(date, [CHART_SETTLEMENT_POINT]),
     ]);
 
     // Initialize 24 hours of data
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
       rtmActual: null,
       damActual: null,
       damPred: null,
+      rtmPred: null,
     }));
 
     // Aggregate RTM data by hour (average of 5-min intervals)
@@ -66,6 +69,14 @@ export async function GET(request: NextRequest) {
       const hour = pred.hourEnding - 1; // hourEnding 1-24 -> index 0-23
       if (hour >= 0 && hour < 24) {
         chartData[hour].damPred = Math.round(pred.predictedPrice * 100) / 100;
+      }
+    }
+
+    // RTM predictions
+    for (const pred of rtmPredictions) {
+      const hour = pred.hourEnding - 1;
+      if (hour >= 0 && hour < 24) {
+        chartData[hour].rtmPred = Math.round(pred.predictedPrice * 100) / 100;
       }
     }
 

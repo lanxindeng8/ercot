@@ -1,48 +1,48 @@
-# 数据设置指南 (Data Setup Guide)
+# Data Setup Guide
 
-## 概览
+## Overview
 
-本项目需要两类数据：
-1. **HRRR 天气数据**（2GB，不在 git 仓库中）
-2. **ERCOT 风电发电量数据**（需要用户提供）
+This project requires two types of data:
+1. **HRRR Weather Data** (2GB, not in the git repository)
+2. **ERCOT Wind Generation Data** (needs to be provided by the user)
 
 ---
 
-## 1. HRRR 天气数据
+## 1. HRRR Weather Data
 
-### 数据描述
-- **来源**: NOAA HRRR (High-Resolution Rapid Refresh)
-- **分辨率**: 3km
-- **区域**: 德州 (Texas)
-- **变量**: u10m, v10m, u80m, v80m, t2m, sp
-- **时间范围**: 2024-07-01 至 2025-01-22
-- **大小**: ~2GB (130 个 zarr 文件)
+### Data Description
+- **Source**: NOAA HRRR (High-Resolution Rapid Refresh)
+- **Resolution**: 3km
+- **Region**: Texas
+- **Variables**: u10m, v10m, u80m, v80m, t2m, sp
+- **Time Range**: 2024-07-01 to 2025-01-22
+- **Size**: ~2GB (130 zarr files)
 
-### 下载步骤
+### Download Steps
 
-激活虚拟环境并安装依赖：
+Activate the virtual environment and install dependencies:
 ```bash
 cd /path/to/wind-generation-forecast
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# 安装 earth2studio（如果需要）
+# Install earth2studio (if needed)
 # PIP_CONFIG_FILE=/dev/null pip install -e /path/to/earth2studio
 ```
 
-下载 HRRR 数据（示例）：
+Download HRRR data (example):
 ```bash
-# 下载单个日期的所有初始化时刻
+# Download all initialization times for a single date
 python scripts/fetch_hrrr_data.py --date 2024-07-01 --hours 0 6 12 18
 
-# 批量下载（建议使用后台任务）
+# Batch download (recommended to run as background tasks)
 for date in 2024-07-01 2024-07-08 2024-07-15; do
     python scripts/fetch_hrrr_data.py --date $date --hours 0 6 12 18 &
 done
 ```
 
-### 数据文件结构
+### Data File Structure
 ```
 data/hrrr/
 ├── hrrr_20240701_00.zarr/
@@ -53,16 +53,16 @@ data/hrrr/
 └── hrrr_20250122_18.zarr/
 ```
 
-每个 zarr 文件包含：
-- 形状: (1, 7, 6, 424, 445)
-  - 1 个初始化时刻
-  - 7 个预报时效 (0, 1, 2, 3, 6, 9, 12 小时)
-  - 6 个气象变量
-  - 424×445 网格点覆盖德州
+Each zarr file contains:
+- Shape: (1, 7, 6, 424, 445)
+  - 1 initialization time
+  - 7 forecast lead times (0, 1, 2, 3, 6, 9, 12 hours)
+  - 6 meteorological variables
+  - 424x445 grid points covering Texas
 
-### 已下载的日期列表
-参考当前仓库的下载日期：
-- 2024-07: 01, 08, 15, 22, 29 (每天 4 个初始化时刻)
+### List of Downloaded Dates
+Refer to the currently downloaded dates in the repository:
+- 2024-07: 01, 08, 15, 22, 29 (4 initialization times per day)
 - 2024-08: 01, 08, 15, 22, 29
 - 2024-09: 01, 08, 15, 22, 29
 - 2024-10: 01, 08, 15, 22, 29
@@ -72,21 +72,21 @@ data/hrrr/
 
 ---
 
-## 2. ERCOT 风电发电量数据
+## 2. ERCOT Wind Generation Data
 
-### 数据要求
+### Data Requirements
 
-**格式**: CSV 或 Parquet
-**必需字段**:
-- `timestamp` 或 `valid_time`: datetime 格式
-- `wind_generation`: 风电发电量 (MW)
+**Format**: CSV or Parquet
+**Required Fields**:
+- `timestamp` or `valid_time`: datetime format
+- `wind_generation`: wind power generation (MW)
 
-**时间要求**:
-- 时间范围: 2024-07-01 至 2025-01-22
-- 频率: 小时级数据
-- 时区: UTC 或明确标注
+**Time Requirements**:
+- Time range: 2024-07-01 to 2025-01-22
+- Frequency: hourly data
+- Timezone: UTC or clearly labeled
 
-### 示例数据格式
+### Example Data Format
 
 CSV:
 ```csv
@@ -97,72 +97,72 @@ timestamp,wind_generation
 ...
 ```
 
-或 Parquet 格式存储在 `data/ercot/wind_generation.parquet`
+Or Parquet format stored at `data/ercot/wind_generation.parquet`
 
-### 数据获取来源
-- ERCOT 官网: http://www.ercot.com/gridinfo/generation
-- 具体页面: 查找 "Wind Power Production" 或 "Actual System Load by Fuel Type"
+### Data Sources
+- ERCOT official website: http://www.ercot.com/gridinfo/generation
+- Specific page: Look for "Wind Power Production" or "Actual System Load by Fuel Type"
 
 ---
 
-## 3. 数据对齐与特征构建
+## 3. Data Alignment and Feature Construction
 
-获取两类数据后，运行特征构建脚本：
+After obtaining both types of data, run the feature construction script:
 
 ```bash
 python scripts/build_features.py
 ```
 
-该脚本会：
-1. 读取 HRRR 天气数据
-2. 读取 ERCOT 风电数据
-3. 对齐时间戳
-4. 计算风速、风力特征
-5. 计算 ramp 特征（变化率、加速度等）
-6. 计算时间特征（小时、星期几、是否夜间等）
-7. 保存到 `data/processed/features.parquet`
+This script will:
+1. Read HRRR weather data
+2. Read ERCOT wind power data
+3. Align timestamps
+4. Compute wind speed and wind power features
+5. Compute ramp features (rate of change, acceleration, etc.)
+6. Compute temporal features (hour, day of week, whether nighttime, etc.)
+7. Save to `data/processed/features.parquet`
 
 ---
 
-## 4. 训练模型
+## 4. Train Models
 
 ```bash
-# 使用 LightGBM 训练
+# Train with LightGBM
 python scripts/train_models.py --model gbm
 
-# 使用 LSTM 训练（需要更多数据）
+# Train with LSTM (requires more data)
 python scripts/train_models.py --model lstm
 
-# 使用 ensemble（组合模型）
+# Train with ensemble (combined models)
 python scripts/train_models.py --model ensemble
 ```
 
 ---
 
-## 5. 常见问题
+## 5. FAQ
 
-### Q: 下载 HRRR 数据很慢怎么办？
-A: 使用并行下载，每次下载 4-5 个日期。NOAA 服务器可能限速，耐心等待。
+### Q: What if downloading HRRR data is too slow?
+A: Use parallel downloads, downloading 4-5 dates at a time. The NOAA server may throttle speeds, so be patient.
 
-### Q: 如何验证 HRRR 数据完整性？
-A: 运行以下命令检查：
+### Q: How to verify HRRR data integrity?
+A: Run the following command to check:
 ```bash
-ls data/hrrr/*.zarr | wc -l  # 应该有 ~130 个文件
+ls data/hrrr/*.zarr | wc -l  # Should have ~130 files
 ```
 
-### Q: ERCOT 数据时区不一致怎么办？
-A: 统一转换为 UTC：
+### Q: What if the ERCOT data timezone is inconsistent?
+A: Convert everything to UTC:
 ```python
 import pandas as pd
 df = pd.read_csv('ercot_data.csv')
 df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize('America/Chicago').dt.tz_convert('UTC')
 ```
 
-### Q: 训练数据不足怎么办？
-A: 可以下载更多历史 HRRR 数据（2023-2024 年份）。参考 `scripts/fetch_hrrr_data.py` 修改日期范围。
+### Q: What if there is insufficient training data?
+A: You can download more historical HRRR data (years 2023-2024). Refer to `scripts/fetch_hrrr_data.py` and modify the date range.
 
 ---
 
-## 联系方式
+## Contact
 
-如有问题，请提交 GitHub Issue 或联系项目维护者。
+If you have questions, please submit a GitHub Issue or contact the project maintainers.

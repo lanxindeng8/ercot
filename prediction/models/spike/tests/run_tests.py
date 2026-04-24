@@ -1,11 +1,11 @@
 """
-运行所有测试
+Run all tests
 """
 
 import sys
 import unittest
 
-# 发现并运行所有测试
+# Discover and run all tests
 if __name__ == '__main__':
     loader = unittest.TestLoader()
     suite = loader.discover('tests', pattern='test_*.py')
@@ -13,5 +13,5 @@ if __name__ == '__main__':
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
-    # 返回退出码
+    # Return exit code
     sys.exit(0 if result.wasSuccessful() else 1)

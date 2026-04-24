@@ -1,7 +1,7 @@
 """
-标签生成模块
+Label Generation Module
 
-根据设计文档生成 SpikeEvent, LeadSpike, Regime 标签
+Generates SpikeEvent, LeadSpike, and Regime labels according to the design document
 """
 
 import pandas as pd
@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 
 class SpikeLabels:
-    """Spike 事件标签生成器"""
+    """Spike event label generator"""
 
     @staticmethod
     def generate_spike_event(
@@ -23,30 +23,30 @@ class SpikeLabels:
         use_percentile: bool = False,
         percentile_window: int = 30
     ) -> pd.Series:
-        """生成 SpikeEvent 标签
+        """Generate SpikeEvent labels
 
         Args:
-            df: 数据框，包含价格和价差数据
-            zone: 区域名称
-            P_hi: 价格阈值 ($/MWh)
-            S_hi: zone-hub 价差阈值 ($/MWh)
-            S_cross_hi: zone-houston 价差阈值 ($/MWh)
-            m: 持续时间阈值 (时间步数)
-            use_percentile: 是否使用分位数阈值
-            percentile_window: 滚动窗口天数（如果使用分位数）
+            df: DataFrame containing price and spread data
+            zone: Zone name
+            P_hi: Price threshold ($/MWh)
+            S_hi: Zone-hub spread threshold ($/MWh)
+            S_cross_hi: Zone-Houston spread threshold ($/MWh)
+            m: Duration threshold (number of time steps)
+            use_percentile: Whether to use percentile thresholds
+            percentile_window: Rolling window in days (if using percentile)
 
         Returns:
-            SpikeEvent_{zone}: 0/1 标签
+            SpikeEvent_{zone}: 0/1 label
         """
-        # 条件 A: 价格高
+        # Condition A: High price
         if use_percentile:
-            window_size = percentile_window * 24 * 12  # 假设5分钟数据
+            window_size = percentile_window * 24 * 12  # Assumes 5-minute data
             P_threshold = df[f'P_{zone}'].rolling(window=window_size, min_periods=1).quantile(0.99)
             cond_price = df[f'P_{zone}'] >= P_threshold
         else:
             cond_price = df[f'P_{zone}'] >= P_hi
 
-        # 条件 B: 价差大 (约束主导)
+        # Condition B: Large spread (constraint-driven)
         spread_zh = df[f'P_{zone}'] - df['P_Hub']
 
         if use_percentile:
@@ -56,7 +56,7 @@ class SpikeLabels:
         else:
             cond_spread_zh = spread_zh >= S_hi
 
-        # 如果有 Houston 数据，添加跨区域价差条件
+        # If Houston data is available, add cross-zone spread condition
         if f'P_Houston' in df.columns and zone != 'Houston':
             spread_cross = df[f'P_{zone}'] - df['P_Houston']
             if use_percentile:
@@ -70,7 +70,7 @@ class SpikeLabels:
         else:
             cond_spread = cond_spread_zh
 
-        # 条件 C: 持续时间
+        # Condition C: Duration
         raw_spike = cond_price & cond_spread
         sustained_spike = raw_spike.rolling(window=m, min_periods=1).sum() >= m
 
@@ -82,20 +82,20 @@ class SpikeLabels:
         H: int = 60,
         dt: int = 5
     ) -> pd.Series:
-        """生成 LeadSpike 标签 (提前预警)
+        """Generate LeadSpike label (early warning)
 
         Args:
-            spike_event: SpikeEvent 标签序列
-            H: 预警时间窗口 (分钟)
-            dt: 数据时间分辨率 (分钟)
+            spike_event: SpikeEvent label series
+            H: Warning time window (minutes)
+            dt: Data time resolution (minutes)
 
         Returns:
-            LeadSpike: 0/1 标签
+            LeadSpike: 0/1 label
         """
-        k = int(H / dt)  # 窗口大小
+        k = int(H / dt)  # Window size
 
-        # 反转 -> 滚动最大值 -> 再反转
-        # 这样可以向前看未来窗口内是否有 spike
+        # Reverse -> rolling max -> reverse back
+        # This allows looking ahead to check for spikes within the future window
         lead_spike = spike_event[::-1].rolling(window=k, min_periods=1).max()[::-1]
 
         return lead_spike.fillna(0).astype(int)
@@ -108,28 +108,28 @@ class SpikeLabels:
         S_mid: float = 20,
         spike_event: Optional[pd.Series] = None
     ) -> pd.Series:
-        """生成 Regime 状态标签
+        """Generate Regime state label
 
         Args:
-            df: 数据框
-            zone: 区域名称
-            P_mid: Tight 状态价格阈值
-            S_mid: Tight 状态价差阈值
-            spike_event: 已计算的 SpikeEvent（如果提供）
+            df: DataFrame
+            zone: Zone name
+            P_mid: Tight state price threshold
+            S_mid: Tight state spread threshold
+            spike_event: Pre-computed SpikeEvent (if provided)
 
         Returns:
-            Regime: 'Normal' / 'Tight' / 'Scarcity' 标签
+            Regime: 'Normal' / 'Tight' / 'Scarcity' label
         """
         spread_zh = df[f'P_{zone}'] - df['P_Hub']
 
-        # 初始化为 Normal
+        # Initialize as Normal
         regime = pd.Series('Normal', index=df.index)
 
-        # Tight 状态
+        # Tight state
         tight_cond = (df[f'P_{zone}'] >= P_mid) | (spread_zh >= S_mid)
         regime[tight_cond] = 'Tight'
 
-        # Scarcity 状态 (优先级最高)
+        # Scarcity state (highest priority)
         if spike_event is not None:
             regime[spike_event == 1] = 'Scarcity'
 
@@ -137,7 +137,7 @@ class SpikeLabels:
 
 
 class LabelGenerator:
-    """标签生成主类"""
+    """Label generator main class"""
 
     def __init__(
         self,
@@ -151,18 +151,18 @@ class LabelGenerator:
         H: int = 60,
         dt: int = 5
     ):
-        """初始化
+        """Initialize
 
         Args:
-            zones: 区域列表
-            P_hi: Spike 价格阈值
-            S_hi: Spike 价差阈值
-            S_cross_hi: Spike 跨区域价差阈值
-            P_mid: Tight 价格阈值
-            S_mid: Tight 价差阈值
-            m: Spike 持续时间阈值
-            H: Lead Spike 预警窗口
-            dt: 数据时间间隔
+            zones: List of zones
+            P_hi: Spike price threshold
+            S_hi: Spike spread threshold
+            S_cross_hi: Spike cross-zone spread threshold
+            P_mid: Tight price threshold
+            S_mid: Tight spread threshold
+            m: Spike duration threshold
+            H: Lead Spike warning window
+            dt: Data time interval
         """
         self.zones = zones
         self.P_hi = P_hi
@@ -179,23 +179,23 @@ class LabelGenerator:
         df: pd.DataFrame,
         use_percentile: bool = False
     ) -> pd.DataFrame:
-        """生成所有标签
+        """Generate all labels
 
         Args:
-            df: 原始数据
-            use_percentile: 是否使用滚动分位数阈值
+            df: Raw data
+            use_percentile: Whether to use rolling percentile thresholds
 
         Returns:
-            包含所有标签的 DataFrame
+            DataFrame containing all labels
         """
         labels = pd.DataFrame(index=df.index)
 
         for zone in self.zones:
             if f'P_{zone}' not in df.columns:
-                print(f"警告: 缺少 P_{zone} 列，跳过 {zone} 区域")
+                print(f"Warning: Missing P_{zone} column, skipping {zone} zone")
                 continue
 
-            print(f"生成 {zone} 区域标签...")
+            print(f"Generating labels for {zone} zone...")
 
             # 1. SpikeEvent
             spike_event = SpikeLabels.generate_spike_event(
@@ -227,14 +227,14 @@ class LabelGenerator:
             )
             labels[f'Regime_{zone}'] = regime
 
-            # 统计信息
+            # Statistics
             n_spikes = spike_event.sum()
             n_lead_spikes = lead_spike.sum()
             regime_counts = regime.value_counts()
 
-            print(f"  - SpikeEvent 数量: {n_spikes}")
-            print(f"  - LeadSpike 数量: {n_lead_spikes}")
-            print(f"  - Regime 分布:")
+            print(f"  - SpikeEvent count: {n_spikes}")
+            print(f"  - LeadSpike count: {n_lead_spikes}")
+            print(f"  - Regime distribution:")
             for state, count in regime_counts.items():
                 print(f"    {state}: {count} ({count/len(regime)*100:.2f}%)")
 
@@ -243,16 +243,16 @@ class LabelGenerator:
     def identify_spike_events(
         self,
         spike_event: pd.Series,
-        min_gap: int = 12  # 最小间隔（时间步数），用于分割独立事件
+        min_gap: int = 12  # Minimum gap (time steps) for separating independent events
     ) -> list:
-        """识别独立的 spike 事件
+        """Identify independent spike events
 
         Args:
-            spike_event: SpikeEvent 标签序列
-            min_gap: 最小间隔，小于此间隔的 spike 视为同一事件
+            spike_event: SpikeEvent label series
+            min_gap: Minimum gap; spikes closer than this are treated as the same event
 
         Returns:
-            事件列表，每个事件为 {'start': timestamp, 'end': timestamp, 'duration': int, 'max_idx': timestamp}
+            List of events, each event is {'start': timestamp, 'end': timestamp, 'duration': int, 'max_idx': timestamp}
         """
         events = []
         in_event = False
@@ -269,11 +269,11 @@ class LabelGenerator:
                     event_indices.append(idx)
             else:
                 if in_event:
-                    # 检查是否应该结束事件
+                    # Check whether the event should end
                     if len(event_indices) > 0:
                         gap = (idx - event_indices[-1]).total_seconds() / 60 / self.dt
                         if gap > min_gap:
-                            # 记录事件
+                            # Record the event
                             events.append({
                                 'start': event_start,
                                 'end': event_indices[-1],
@@ -283,7 +283,7 @@ class LabelGenerator:
                             in_event = False
                             event_indices = []
 
-        # 处理最后一个事件
+        # Handle the last event
         if in_event and len(event_indices) > 0:
             events.append({
                 'start': event_start,
@@ -296,9 +296,9 @@ class LabelGenerator:
 
 
 if __name__ == '__main__':
-    # 测试代码
-    print("标签生成模块加载成功！")
-    print("\n支持的标签类型:")
-    print("1. SpikeEvent - Spike 事件标识")
-    print("2. LeadSpike - 提前预警标签")
-    print("3. Regime - 系统状态标签 (Normal/Tight/Scarcity)")
+    # Test code
+    print("Label generation module loaded successfully!")
+    print("\nSupported label types:")
+    print("1. SpikeEvent - Spike event indicator")
+    print("2. LeadSpike - Early warning label")
+    print("3. Regime - System state label (Normal/Tight/Scarcity)")

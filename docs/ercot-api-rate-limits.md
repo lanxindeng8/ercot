@@ -1,127 +1,127 @@
-# ERCOT API Rate Limit — 经验文档
+# ERCOT API Rate Limit — Experience Document
 
-**最后更新**: 2026-03-23  
-**适用**: ERCOT Public API (`api.ercot.com`)
+**Last updated**: 2026-03-23
+**Applies to**: ERCOT Public API (`api.ercot.com`)
 
-## 账号信息
+## Account Information
 
-- 只有一套 ERCOT API 凭证（truetest86@gmail.com）
-- 所有 endpoint、所有 job 共享同一个 `ERCOT_PUBLIC_API_SUBSCRIPTION_KEY` 的 rate limit 配额
-- 凭证存储在 LaunchAgent plist `EnvironmentVariables` 中，不在 `.env` 文件里
+- Only one set of ERCOT API credentials (truetest86@gmail.com)
+- All endpoints and all jobs share the same `ERCOT_PUBLIC_API_SUBSCRIPTION_KEY` rate limit quota
+- Credentials are stored in LaunchAgent plist `EnvironmentVariables`, not in `.env` files
 
-## Rate Limit 行为观察
+## Rate Limit Behavior Observations
 
-### 限流类型：小时带宽限制
-429 响应体明确说明：
+### Throttling Type: Hourly Bandwidth Limit
+429 response body clearly states:
 ```json
 {"statusCode": 429, "error": "BandwidthQuotaExceeded",
  "message": "You have exceeded the hourly bandwidth limit. Your quota will reset within the hour."}
 ```
 
-- **限制的是带宽（数据传输量），不是请求次数**
-- 配额 **每小时重置**（整点或滚动窗口）
-- 所有 endpoint 共享配额：rtm-lmp、dam-lmp、wind-forecast、archive 下载都算在内
-- ERCOT API **不返回 `Retry-After` header**
+- **The limit is on bandwidth (data transfer volume), not request count**
+- Quota **resets every hour** (on the hour or rolling window)
+- All endpoints share quota: rtm-lmp, dam-lmp, wind-forecast, archive downloads all count toward it
+- ERCOT API **does not return a `Retry-After` header**
 
-### 经验数据
-- Wind forecast 每月 ~160K 行 (~10MB)，连续 3-5 个月查询后触发
-- Archive 下载每文件 ~16MB，连续 4 个可以过（间隔 90s），第 5 个大概率 429
-- 429 触发后，同一小时内的后续请求基本都会被拒
+### Empirical Data
+- Wind forecast ~160K rows per month (~10MB), triggers after querying 3-5 consecutive months
+- Archive downloads ~16MB per file, 4 consecutive downloads succeed (with 90s intervals), 5th one very likely gets 429
+- After triggering 429, subsequent requests within the same hour are basically all rejected
 
-### 两类请求的差异
-| 类型 | Endpoint 示例 | 特点 |
+### Differences Between Two Request Types
+| Type | Endpoint Example | Characteristics |
 |---|---|---|
-| **Archive 下载** | `np6-792-ER` (reserves) | 一次下载整年 XLSX (~16MB)，总请求数少 |
-| **实时查询** | `np4-732-cd` (wind forecast) | 按月分页查询，每月 ~160K 行分 4 页，请求密集 |
+| **Archive download** | `np6-792-ER` (reserves) | Downloads entire year XLSX at once (~16MB), low total request count |
+| **Live query** | `np4-732-cd` (wind forecast) | Paginated queries by month, ~160K rows per month split across 4 pages, request-intensive |
 
-Archive 下载更容易成功，因为单文件包含整年数据（4 次请求 = 4 年）。  
-实时查询每月需 1-4 次分页请求，12 个月 = 12-48 次请求，极易触发限流。
+Archive downloads are more likely to succeed because a single file contains an entire year of data (4 requests = 4 years).
+Live queries require 1-4 paginated requests per month, 12 months = 12-48 requests, extremely easy to trigger throttling.
 
-### 踩过的坑
+### Pitfalls Encountered
 
-1. **urllib3 `Retry(status_forcelist=[429])` 是灾难**  
-   urllib3 对 429 做快速重试（秒级），反而加速耗尽配额。  
-   **修复**: 从 `status_forcelist` 移除 429，只用自定义退避逻辑处理。  
+1. **urllib3 `Retry(status_forcelist=[429])` is a disaster**
+   urllib3 does rapid retries on 429 (second-level intervals), which actually accelerates quota exhaustion.
+   **Fix**: Removed 429 from `status_forcelist`, handle with custom backoff logic only.
    Commit: `6ffd9f3`
 
-2. **多 job 并发 = 加速撞限流**  
-   之前 rtm-scraper + prediction-runner 每 5 分钟同时触发，加上手动 backfill，三路并发秒触 429。  
-   **规则**: 任何时候最多一个进程访问 ERCOT API。
+2. **Multiple concurrent jobs = faster rate limit hits**
+   Previously rtm-scraper + prediction-runner triggered simultaneously every 5 minutes, plus manual backfill — three concurrent streams hit 429 instantly.
+   **Rule**: At most one process accessing the ERCOT API at any time.
 
-3. **Archive 文件命名与内容不匹配**  
-   `RTM_ORDC_..._2023.xlsx` 实际包含 2022 年数据（ERCOT 以发布年份命名，不是数据年份）。  
-   **规则**: 入库后必须验证 `sced_timestamp` 的实际年份范围。
+3. **Archive file naming doesn't match content**
+   `RTM_ORDC_..._2023.xlsx` actually contains 2022 data (ERCOT names by publication year, not data year).
+   **Rule**: Must verify the actual year range of `sced_timestamp` after ingestion.
 
-## 当前退避策略 (`scraper/src/ercot_client.py`)
+## Current Backoff Strategy (`scraper/src/ercot_client.py`)
 
 ```
-初始延迟: 10 秒
-退避方式: 指数 × 2 + jitter (±50%)
-最大延迟: 300 秒 (5 分钟)
-最大重试: 5 次
-序列示例: 10s → 20s → 40s → 80s → 160s (加随机抖动)
+Initial delay: 10 seconds
+Backoff method: Exponential × 2 + jitter (±50%)
+Max delay: 300 seconds (5 minutes)
+Max retries: 5
+Sequence example: 10s → 20s → 40s → 80s → 160s (with random jitter)
 ```
 
-## 数据获取策略（推荐）
+## Data Acquisition Strategy (Recommended)
 
-### 原则
-1. **串行，不并发** — 同一时间只有一个 ERCOT API 调用者
-2. **Archive 优先** — 如果数据有 yearly archive 格式（如 reserves），优先下载 archive
-3. **间隔 ≥ 90 秒** — 每次成功请求后等 90 秒再发下一个
-4. **失败不急** — 被 429 后至少等 5 分钟再试
+### Principles
+1. **Serial, not concurrent** — Only one ERCOT API caller at a time
+2. **Archive first** — If data is available in yearly archive format (e.g., reserves), prefer downloading archives
+3. **Interval ≥ 90 seconds** — Wait 90 seconds after each successful request before sending the next
+4. **Don't rush on failure** — Wait at least 5 minutes before retrying after a 429
 
-### 批量 Backfill
-- **Archive 类型（reserves 等）**: 直接跑脚本，间隔 90 秒，每小时 ≤4 个文件
-- **查询类型（wind forecast 等）**: 用 cron 每小时触发，顺序拉取直到 429，下次继续
-- **大批量（>20 请求）**: 分多天完成，或找 archive 替代方案
-- **脚本模式**: 触发限流就立即放弃，不做长时间退避重试（浪费时间，配额要到下一小时才重置）
+### Bulk Backfill
+- **Archive types (reserves, etc.)**: Run script directly, 90-second intervals, ≤4 files per hour
+- **Query types (wind forecast, etc.)**: Use cron to trigger hourly, pull sequentially until 429, continue next time
+- **Large batches (>20 requests)**: Spread across multiple days, or find archive alternatives
+- **Script mode**: Abort immediately when throttled, don't do long backoff retries (wastes time, quota doesn't reset until the next hour)
 
-### LaunchAgent 架构 (2026-03-23 重构)
+### LaunchAgent Architecture (2026-03-23 Refactored)
 
-| Job | 频率 | ERCOT API? | 说明 |
+| Job | Frequency | ERCOT API? | Description |
 |---|---|---|---|
-| `rtm-lmp-cdr` | 5min | ❌ CDR HTML | 实时 RTM 数据，不走 API |
-| `rtm-lmp-api` | 1h | ✅ | RTM 历史回填（6h 延迟数据） |
-| `dam-pipeline` | 每天 14:00 | ✅ (1次) | 合并流水线: predictions → API fetch → CDR fetch → Telegram |
-| `prediction-runner` | 5min | ❌ | 调本地 localhost:8011 |
-| `prediction-api` | 常驻 | ❌ | FastAPI 服务 |
-| `telegram-lmp-summary` | 每天 06:30 | ❌ | 读 InfluxDB |
-| `btc-price-monitor` | 5min | ❌ | PolyManager 项目，不相关 |
+| `rtm-lmp-cdr` | 5min | ❌ CDR HTML | Real-time RTM data, does not use API |
+| `rtm-lmp-api` | 1h | ✅ | RTM historical backfill (6h delayed data) |
+| `dam-pipeline` | Daily 14:00 | ✅ (1 time) | Combined pipeline: predictions → API fetch → CDR fetch → Telegram |
+| `prediction-runner` | 5min | ❌ | Calls local localhost:8011 |
+| `prediction-api` | Always-on | ❌ | FastAPI service |
+| `telegram-lmp-summary` | Daily 06:30 | ❌ | Reads from InfluxDB |
+| `btc-price-monitor` | 5min | ❌ | PolyManager project, unrelated |
 
-**ERCOT API 调用者只有 2 个**: `rtm-lmp-api`（每小时）+ `dam-pipeline`（每天 14:00 一次）
+**Only 2 ERCOT API callers**: `rtm-lmp-api` (hourly) + `dam-pipeline` (daily at 14:00 once)
 
-**已废弃（不再加载）**:
-- `rtm-lmp-scraper` → 拆为 `rtm-lmp-cdr` + `rtm-lmp-api`
-- `dam-lmp-scraper`, `dam-lmp-cdr-scraper`, `dam-predictions`, `telegram-dam-schedule` → 合并为 `dam-pipeline`
+**Deprecated (no longer loaded)**:
+- `rtm-lmp-scraper` → Split into `rtm-lmp-cdr` + `rtm-lmp-api`
+- `dam-lmp-scraper`, `dam-lmp-cdr-scraper`, `dam-predictions`, `telegram-dam-schedule` → Merged into `dam-pipeline`
 
-## 数据补全现状 (2026-03-23)
+## Data Backfill Status (2026-03-23)
 
-### RT Reserves ✅ 完整
-| 年份 | 行数 | 状态 |
+### RT Reserves ✅ Complete
+| Year | Rows | Status |
 |---|---|---|
-| 2016-2025 | 1,056,444 | 每年 ~106K 行，连续完整 |
+| 2016-2025 | 1,056,444 | ~106K rows per year, continuously complete |
 
-### Wind Forecast ✅ 完整
-| 范围 | 行数 | 状态 |
+### Wind Forecast ✅ Complete
+| Range | Rows | Status |
 |---|---|---|
-| 2022-12 → 2026-03 (40 months) | 113,924 | 完整，无缺口 |
+| 2022-12 → 2026-03 (40 months) | 113,924 | Complete, no gaps |
 
-通过 OpenClaw cron job `wind-forecast-backfill` 自动补完（每小时拉一批直到 429，下一小时继续）。
-Cron job 完成后已自动删除。脚本保留在 `prediction/scripts/fetch_wind_one_month.py` 供未来使用。
+Automatically completed via OpenClaw cron job `wind-forecast-backfill` (pulls a batch each hour until 429, continues next hour).
+Cron job was automatically deleted after completion. Script preserved at `prediction/scripts/fetch_wind_one_month.py` for future use.
 
 ## Cron Jobs
 
 ### wind-forecast-backfill
-- **频率**: 每 1 小时
-- **脚本**: `prediction/scripts/fetch_wind_one_month.py`
-- **逻辑**: 查 DB 找所有缺失月 → 按顺序逐月拉取 → 429 立即停止等下次 cron → 全部补完后删除 cron
-- **每次运行**尽量多拉（在配额允许内），不止拉一个月
-- **状态**: 运行中（2026-03-23 创建）
+- **Frequency**: Every 1 hour
+- **Script**: `prediction/scripts/fetch_wind_one_month.py`
+- **Logic**: Query DB to find all missing months → Pull sequentially month by month → Stop immediately on 429 and wait for next cron → Delete cron when all backfilled
+- **Each run** pulls as many as possible (within quota), not just one month
+- **Status**: Running (created 2026-03-23)
 
-## 未来优化方向
+## Future Optimization Directions
 
-- [ ] 获取第二个 subscription key（如果 ERCOT 允许多 key）
-- [ ] 实现请求配额池：所有 job 共享一个令牌桶，防并发超限
-- [x] ~~检查 NP4-732-CD 是否有 archive endpoint~~ — 未能验证（429 阻断），但 data API 已够用
-- [ ] RTM scraper 降频到 15 分钟 + 加退避
-- [ ] 退避策略调整：429 后不做长退避，直接放弃等下个小时（匹配 hourly quota reset）
+- [ ] Obtain a second subscription key (if ERCOT allows multiple keys)
+- [ ] Implement request quota pool: All jobs share a token bucket to prevent concurrent overuse
+- [x] ~~Check if NP4-732-CD has an archive endpoint~~ — Could not verify (blocked by 429), but data API is sufficient
+- [ ] Reduce RTM scraper frequency to 15 minutes + add backoff
+- [ ] Adjust backoff strategy: Don't do long backoff after 429, just abort and wait for the next hour (matches hourly quota reset)

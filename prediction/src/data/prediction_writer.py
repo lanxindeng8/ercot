@@ -166,6 +166,70 @@ class PredictionWriter:
             return []
 
 
+    def write_rtm_predictions(
+        self,
+        settlement_point: str,
+        delivery_date: str,
+        predictions: List[Dict[str, Any]],
+        model_name: str = "rtm_1h",
+    ) -> int:
+        """
+        Write RTM price predictions to InfluxDB.
+
+        Same structure as write_dam_predictions but uses 'rtm_prediction' measurement.
+        """
+        if not predictions:
+            return 0
+
+        points = []
+        generated_at = datetime.utcnow().isoformat() + "Z"
+
+        for pred in predictions:
+            try:
+                hour_ending = pred.get("hour_ending")
+                predicted_price = pred.get("predicted_price")
+
+                if hour_ending is None or predicted_price is None:
+                    continue
+
+                if isinstance(hour_ending, str):
+                    hour = int(hour_ending.split(":")[0])
+                else:
+                    hour = int(hour_ending)
+
+                local_timestamp = datetime.fromisoformat(delivery_date)
+                local_timestamp = local_timestamp.replace(hour=hour - 1)
+                timestamp = local_timestamp + timedelta(hours=6)  # CST to UTC
+
+                point = (
+                    Point("rtm_prediction")
+                    .tag("settlement_point", settlement_point)
+                    .tag("model", model_name)
+                    .field("predicted_price", float(predicted_price))
+                    .field("delivery_date", delivery_date)
+                    .field("hour_ending", hour)
+                    .field("generated_at", generated_at)
+                    .time(timestamp)
+                )
+
+                points.append(point)
+
+            except Exception as e:
+                print(f"Error creating RTM prediction point: {e}")
+                continue
+
+        if points:
+            try:
+                self.client.write(record=points)
+                print(f"Wrote {len(points)} RTM predictions for {settlement_point} on {delivery_date}")
+                return len(points)
+            except Exception as e:
+                print(f"Error writing RTM predictions: {e}")
+                return 0
+
+        return 0
+
+
 def create_writer_from_env() -> PredictionWriter:
     """Create PredictionWriter from environment variables"""
     return PredictionWriter()

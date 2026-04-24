@@ -159,6 +159,50 @@ export interface DamPredictionRecord {
   hourEnding: number;
 }
 
+export interface RtmPredictionRecord {
+  time: Date;
+  settlementPoint: string;
+  predictedPrice: number;
+  hourEnding: number;
+}
+
+export async function queryRtmPredictions(
+  date: string,
+  settlementPoints: string[]
+): Promise<RtmPredictionRecord[]> {
+  const client = getClient();
+  const pointsFilter = settlementPoints.map((p) => `'${p}'`).join(", ");
+  const { start, end } = getUtcRangeForDate(date);
+
+  const query = `
+    SELECT time, settlement_point, predicted_price, hour_ending
+    FROM "rtm_prediction"
+    WHERE time >= '${start}'
+      AND time < '${end}'
+      AND settlement_point IN (${pointsFilter})
+    ORDER BY time ASC
+  `;
+
+  const records: RtmPredictionRecord[] = [];
+
+  try {
+    const result = await client.query(query);
+    for await (const row of result) {
+      records.push({
+        time: new Date(row.time),
+        settlementPoint: row.settlement_point,
+        predictedPrice: row.predicted_price,
+        hourEnding: row.hour_ending,
+      });
+    }
+  } catch (error) {
+    console.error("Error querying RTM predictions:", error);
+    // Don't throw - predictions are optional
+  }
+
+  return records;
+}
+
 export async function queryDamPredictions(
   date: string,
   settlementPoints: string[]

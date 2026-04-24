@@ -17,6 +17,7 @@ interface ChartDataPoint {
   rtmActual: number | null;
   damActual: number | null;
   damPred: number | null;
+  rtmPred: number | null;
 }
 
 interface ChartResponse {
@@ -149,6 +150,16 @@ export default function PriceChart() {
                 dataKey="damPred"
                 name="DAM Predicted"
                 stroke="#4ecdc4"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="rtmPred"
+                name="RTM Predicted"
+                stroke="#ff6b6b"
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}

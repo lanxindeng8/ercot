@@ -1,54 +1,54 @@
-# Zone-Level Spike Prediction — 工作日志
+# Zone-Level Spike Prediction — Work Log
 
-> 按步骤记录实施过程，每步包含：目标、设计、结果、教训
+> Step-by-step implementation record, each step includes: objective, design, results, lessons learned
 
 ---
 
-## Phase 0: 数据获取基础设施
+## Phase 0: Data Acquisition Infrastructure
 
-### Step 0.1: 共享数据层目录结构
+### Step 0.1: Shared Data Layer Directory Structure
 
-**目标**: 创建 `prediction/src/data/weather/` 和 `prediction/src/data/ercot/` 目录结构
+**Objective**: Create `prediction/src/data/weather/` and `prediction/src/data/ercot/` directory structure
 
-**当前状态**: 天气数据代码在 `prediction/models/wind/src/data/hrrr_client.py`（耦合在 wind 模型内）
+**Current state**: Weather data code is in `prediction/models/wind/src/data/hrrr_client.py` (coupled within the wind model)
 
-**设计**:
+**Design**:
 ```
 prediction/src/data/
 ├── __init__.py
 ├── weather/
 │   ├── __init__.py
-│   ├── openmeteo_client.py    # Open-Meteo Archive API 客户端
-│   ├── stations.py            # Zone → 城市坐标映射
-│   └── zone_weather.py        # T_anom, ΔT, Wind Chill, Cold Front 计算
+│   ├── openmeteo_client.py    # Open-Meteo Archive API client
+│   ├── stations.py            # Zone → city coordinate mapping
+│   └── zone_weather.py        # T_anom, ΔT, Wind Chill, Cold Front calculations
 └── ercot/
     ├── __init__.py
     ├── wind_forecast.py       # NP4-732-CD: GEN + STWPF (forecast vs actual)
     └── reserves.py            # NP6-792-ER: PRC, ORDC price adders
 ```
 
-**注意**: 
-- `hrrr_client.py` 暂不移动（wind 模型仍在用），后续 refactor
-- `ercot/` 下的模块复用 `scraper/src/ercot_client.py` 的认证逻辑
-- credentials 从环境变量读取（LaunchAgent 已设置）
+**Notes**:
+- `hrrr_client.py` will not be moved for now (wind model still uses it), refactor later
+- Modules under `ercot/` reuse authentication logic from `scraper/src/ercot_client.py`
+- Credentials are read from environment variables (already set in LaunchAgent)
 
 ---
 
-### Step 0.2: Open-Meteo 天气数据获取
+### Step 0.2: Open-Meteo Weather Data Acquisition
 
-**目标**: 获取 6 个城市、2015-2026 的小时级天气数据，存入 SQLite
+**Objective**: Acquire hourly weather data for 6 cities from 2015-2026, store in SQLite
 
 **API**: `https://archive-api.open-meteo.com/v1/archive`
 
-**验证结果 (2026-03-19)**:
-- ✅ 免费、无 key、REST JSON
-- ✅ San Antonio 2025-12-14 冷锋确认 (18.6→6.3°C)
-- ✅ 1 城市 1 年 ≈ 481 KB JSON
-- ⚠️ `wind_speed_80m` 全 null，需用 ERA5 endpoint 或只用 10m
-- 6 城市 × 11 年 → SQLite ≈ 16 MB
+**Validation results (2026-03-19)**:
+- ✅ Free, no key required, REST JSON
+- ✅ San Antonio 2025-12-14 cold front confirmed (18.6→6.3°C)
+- ✅ 1 city × 1 year ≈ 481 KB JSON
+- ⚠️ `wind_speed_80m` is all null, need to use ERA5 endpoint or only use 10m
+- 6 cities × 11 years → SQLite ≈ 16 MB
 
-**城市坐标映射**:
-| Zone | 城市 | 纬度 | 经度 |
+**City coordinate mapping**:
+| Zone | City | Latitude | Longitude |
 |------|------|------|------|
 | LZ_CPS | San Antonio | 29.42 | -98.49 |
 | LZ_WEST | Midland/Odessa | 31.95 | -102.18 |
@@ -57,15 +57,15 @@ prediction/src/data/
 | HB_SOUTH / LZ_SOUTH | Corpus Christi | 27.80 | -97.40 |
 | System (HB_BUSAVG/HUBAVG) | Austin | 30.27 | -97.74 |
 
-**变量**:
-- `temperature_2m` (°C) — 核心
+**Variables**:
+- `temperature_2m` (°C) — Core
 - `wind_speed_10m` (km/h)
 - `wind_direction_10m` (°)
 - `relative_humidity_2m` (%)
 - `surface_pressure` (hPa)
-- `dew_point_2m` (°C) — 算 Wind Chill 需要
+- `dew_point_2m` (°C) — Needed for Wind Chill calculation
 
-**SQLite 表设计**:
+**SQLite table design**:
 ```sql
 CREATE TABLE weather_hourly (
     station TEXT NOT NULL,           -- 'san_antonio', 'houston', etc.
@@ -80,45 +80,45 @@ CREATE TABLE weather_hourly (
 );
 ```
 
-**获取策略**:
-- Open-Meteo 限制单次请求最多 ~1 年
-- 分 11 次请求 per 城市 (2015~2025 各一年 + 2026 ytd)
-- 6 城市 × 12 请求 = 72 次 HTTP 请求
-- 加 sleep(1) 避免 rate limit → ~2 分钟完成
+**Acquisition strategy**:
+- Open-Meteo limits single requests to approximately 1 year
+- 11 requests per city (one per year for 2015~2025 + 2026 YTD)
+- 6 cities × 12 requests = 72 HTTP requests
+- Add sleep(1) to avoid rate limits → ~2 minutes to complete
 
-**测试计划**:
-1. 先拉 1 城市 1 年验证数据完整性
-2. 检查 null 值比例
-3. 确认时区对齐 (America/Chicago)
-4. 全量拉取
-5. 写 SQLite 导入
+**Test plan**:
+1. First pull 1 city × 1 year to verify data completeness
+2. Check null value ratio
+3. Confirm timezone alignment (America/Chicago)
+4. Full pull
+5. Write SQLite import
 
 ---
 
-### Step 0.3: ERCOT Wind Forecast 获取 (NP4-732-CD)
+### Step 0.3: ERCOT Wind Forecast Acquisition (NP4-732-CD)
 
-**目标**: 获取 wind forecast (STWPF) vs actual (GEN)，存入 SQLite
+**Objective**: Acquire wind forecast (STWPF) vs actual (GEN), store in SQLite
 
 **API**: `https://api.ercot.com/api/public-reports/np4-732-cd/wpp_hrly_avrg_actl_fcast`
 
-**验证结果 (2026-03-19)**:
-- ✅ Data API（不是 archive），同现有 LMP scraper
-- ✅ 21 个字段: postedDatetime, deliveryDate, hourEnding, + 4 metrics × 4 regions (SystemWide, SouthHouston, West, North) + HSL + DST
-- ✅ 认证: 复用现有 ercot_client.py + LaunchAgent credentials
-- ⚠️ 2025-12-14 查询返回 5184 行 (多个 posted versions)
+**Validation results (2026-03-19)**:
+- ✅ Data API (not archive), same as existing LMP scraper
+- ✅ 21 fields: postedDatetime, deliveryDate, hourEnding, + 4 metrics × 4 regions (SystemWide, SouthHouston, West, North) + HSL + DST
+- ✅ Authentication: Reuse existing ercot_client.py + LaunchAgent credentials
+- ⚠️ 2025-12-14 query returned 5184 rows (multiple posted versions)
 
-**字段映射** (per region):
-- `genXxx` — 实际发电 MW
-- `STWPFXxx` — 短期风电功率预报 MW
+**Field mapping** (per region):
+- `genXxx` — Actual generation MW
+- `STWPFXxx` — Short-Term Wind Power Forecast MW
 - `WGRPPXxx` — Wind Generation Resource Production Potential MW
 - `COPHSLXxx` — Current Operating Plan HSL MW
 
-**核心特征计算**:
-- `wind_forecast_error = GEN - STWPF` (surprise: 负值 = 实际比预测少)
+**Core feature calculations**:
+- `wind_forecast_error = GEN - STWPF` (surprise: negative value = actual less than forecast)
 - `wind_capacity_factor = GEN / COPHSL`
 - `wind_surprise_pct = (GEN - STWPF) / STWPF * 100`
 
-**SQLite 表设计**:
+**SQLite table design**:
 ```sql
 CREATE TABLE wind_forecast (
     delivery_date TEXT NOT NULL,
@@ -133,31 +133,31 @@ CREATE TABLE wind_forecast (
 );
 ```
 
-**获取策略**:
-- 用现有 `ercot_client.fetch_paginated_data()` 方法
-- deliveryDateFrom/To 分月请求
-- ~8760 hours × 4 regions × 多个 posted versions = 大量数据
-- 先拉 2025-12 一个月测试量
+**Acquisition strategy**:
+- Use existing `ercot_client.fetch_paginated_data()` method
+- Request by month using deliveryDateFrom/To
+- ~8760 hours × 4 regions × multiple posted versions = large data volume
+- First pull December 2025 (one month) to test volume
 
 ---
 
-### Step 0.4: RT Reserves / ORDC 获取 (NP6-792-ER)
+### Step 0.4: RT Reserves / ORDC Acquisition (NP6-792-ER)
 
-**目标**: 获取 RT reserve margin (PRC) + ORDC price adders 历史数据
+**Objective**: Acquire RT reserve margin (PRC) + ORDC price adders historical data
 
-**API**: Archive 下载 (不是 data API)
-- 列表: `https://api.ercot.com/api/public-reports/archive/np6-792-er`
-- 下载: `https://api.ercot.com/api/public-reports/archive/np6-792-er?download={docId}`
+**API**: Archive download (not a data API)
+- Listing: `https://api.ercot.com/api/public-reports/archive/np6-792-er`
+- Download: `https://api.ercot.com/api/public-reports/archive/np6-792-er?download={docId}`
 
-**验证结果 (2026-03-19)**:
-- ✅ 年度 XLSX 文件，每月一个 sheet
-- ✅ 33 列: Batch ID, SCED Timestamp, PRC, System Lambda, RTOLCAP, RTOFFCAP, RTORPA, RTORDPA, RTOLHSL, RTBP, etc.
-- ✅ ~9K rows/月，~108K rows/年
-- ✅ 数据从 2017 年开始 (8 年)
-- ⚠️ Header 在 row 8 (前面有空行)
-- ⚠️ 2025 年的 HIST_RT_SCED_PRC_ADDR 文件 sheet 全空；RTM_ORDC 版本有数据
+**Validation results (2026-03-19)**:
+- ✅ Annual XLSX files, one sheet per month
+- ✅ 33 columns: Batch ID, SCED Timestamp, PRC, System Lambda, RTOLCAP, RTOFFCAP, RTORPA, RTORDPA, RTOLHSL, RTBP, etc.
+- ✅ ~9K rows/month, ~108K rows/year
+- ✅ Data available from 2017 onward (8 years)
+- ⚠️ Header is at row 8 (empty rows before it)
+- ⚠️ 2025 HIST_RT_SCED_PRC_ADDR file has empty sheets; RTM_ORDC version has data
 
-**可用文件清单**:
+**Available file list**:
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2024 (docId: 1065495488) — 18 MB xlsx
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2023 (docId: 969827183)
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2022 (docId: 899479048)
@@ -165,10 +165,10 @@ CREATE TABLE wind_forecast (
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2020 (docId: 751366904)
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2019 (docId: 694452063)
 - RTM_ORDC_REL_DPLY_PRC_ADDR_RSRV_2017 (docId: 644817015)
-- HIST_RT_SCED_PRC_ADDR_2026 (docId: 1204109813) — 新格式
-- HIST_RT_SCED_PRC_ADDR_2025 (docId: 1180319793) — 新格式但 sheets 空?
+- HIST_RT_SCED_PRC_ADDR_2026 (docId: 1204109813) — New format
+- HIST_RT_SCED_PRC_ADDR_2025 (docId: 1180319793) — New format but sheets are empty?
 
-**SQLite 表设计**:
+**SQLite table design**:
 ```sql
 CREATE TABLE rt_reserves (
     sced_timestamp TEXT NOT NULL,
@@ -187,52 +187,52 @@ CREATE TABLE rt_reserves (
 );
 ```
 
-**获取策略**:
-1. 通过 archive API 列出所有可用文件
-2. 逐年下载 zip → 解压 xlsx
-3. 解析每个月的 sheet (header=row 8)
-4. 写入 SQLite
-5. 预计 8 年 × 18MB = ~144 MB 下载，解析后 ~230 MB SQLite
+**Acquisition strategy**:
+1. List all available files via archive API
+2. Download zip per year → Extract xlsx
+3. Parse each month's sheet (header=row 8)
+4. Write to SQLite
+5. Estimated 8 years × 18MB = ~144 MB download, ~230 MB SQLite after parsing
 
 ---
 
-## 执行记录
+## Execution Log
 
-### Phase 0: 数据获取基础设施 ✅ (2026-03-19)
+### Phase 0: Data Acquisition Infrastructure ✅ (2026-03-19)
 
-| Step | 内容 | 状态 | Commit |
+| Step | Content | Status | Commit |
 |------|------|------|--------|
-| 0.1 | 目录结构 | ✅ 完成 | `57aec0a` |
-| 0.2 | Open-Meteo 天气数据 | ✅ 完成 | 589,680 rows, 6 stations × 2015-2026 |
-| 0.3 | Wind Forecast (NP4-732-CD) | ✅ 完成 | 113,924 rows, 2022-12 → 2026-03 |
-| 0.4 | RT Reserves (NP6-792-ER) | ✅ 完成 | 1,056,444 rows, 2016-2025 连续 |
+| 0.1 | Directory structure | ✅ Complete | `57aec0a` |
+| 0.2 | Open-Meteo weather data | ✅ Complete | 589,680 rows, 6 stations × 2015-2026 |
+| 0.3 | Wind Forecast (NP4-732-CD) | ✅ Complete | 113,924 rows, 2022-12 → 2026-03 |
+| 0.4 | RT Reserves (NP6-792-ER) | ✅ Complete | 1,056,444 rows, 2016-2025 continuous |
 
 ### Phase 1: Zone-Level Spike V2 ✅ (2026-03-19~22)
 
-| Step | 内容 | 状态 | 说明 |
+| Step | Content | Status | Notes |
 |------|------|------|------|
-| 1.1 | 三层标签 (SpikeEvent/LeadSpike/Regime) | ✅ 完成 | 5.3M labels, validated with 2025-12-14 LZ_CPS case |
-| 1.2 | Feature engineering v2 | ✅ 完成 | 30 spike-specific features |
-| 1.3 | LightGBM baseline training | ✅ 完成 | 14 SP models, avg ROC-AUC 0.93, 97% event recall |
-| 1.4 | Optuna tuning | ✅ 完成 | 50 trials/SP, avg PR-AUC +0.22 over baseline |
-| 1.5 | API integration | ✅ 完成 | 3 endpoints + `/predict/spike/v2/all` |
-| 1.6 | Predictor → tuned models | ✅ 完成 | Commit `7403672` |
+| 1.1 | Three-layer labels (SpikeEvent/LeadSpike/Regime) | ✅ Complete | 5.3M labels, validated with 2025-12-14 LZ_CPS case |
+| 1.2 | Feature engineering v2 | ✅ Complete | 30 spike-specific features |
+| 1.3 | LightGBM baseline training | ✅ Complete | 14 SP models, avg ROC-AUC 0.93, 97% event recall |
+| 1.4 | Optuna tuning | ✅ Complete | 50 trials/SP, avg PR-AUC +0.22 over baseline |
+| 1.5 | API integration | ✅ Complete | 3 endpoints + `/predict/spike/v2/all` |
+| 1.6 | Predictor → tuned models | ✅ Complete | Commit `7403672` |
 
 ### Ops: RTM Retrain + Infrastructure (2026-03-22~23)
 
-| Task | 状态 | 说明 |
+| Task | Status | Notes |
 |------|------|------|
-| RTM retrain 80 features | ✅ 完成 | 15 SP × 3 horizons. 17 improved, 18 regressed. See `docs/rtm-retrain-80features-report.md` |
-| Localhost auth bypass | ✅ 完成 | prediction-runner 401 修复 |
-| Data backfill (reserves) | ✅ 完成 | 2020-2023 补全, 1.1M rows total |
-| Data backfill (wind) | ✅ 完成 | cron 滴灌补完, 40 months / 0 gaps |
-| ERCOT 429 修复 | ✅ 完成 | urllib3 移除 429, 自有退避 10s+jitter, 5min cap |
-| LaunchAgent 重构 | ✅ 完成 | 9→7 jobs, RTM CDR/API 分离, DAM pipeline 合并 |
+| RTM retrain 80 features | ✅ Complete | 15 SP × 3 horizons. 17 improved, 18 regressed. See `docs/rtm-retrain-80features-report.md` |
+| Localhost auth bypass | ✅ Complete | prediction-runner 401 fix |
+| Data backfill (reserves) | ✅ Complete | 2020-2023 backfilled, 1.1M rows total |
+| Data backfill (wind) | ✅ Complete | Cron drip-feed completed, 40 months / 0 gaps |
+| ERCOT 429 fix | ✅ Complete | urllib3 removed 429, custom backoff 10s+jitter, 5min cap |
+| LaunchAgent refactoring | ✅ Complete | 9→7 jobs, RTM CDR/API split, DAM pipeline merged |
 
-### 教训
+### Lessons Learned
 
-1. **ERCOT archive 文件名 ≠ 数据年份** — `_2023.xlsx` 里是 2022 数据。必须验证 timestamp
-2. **urllib3 Retry 429 是灾难** — 快速重试耗尽 hourly bandwidth。429 只用自己的退避
-3. **ERCOT 限的是 hourly bandwidth** — 不是请求频率。配额每小时重置
-4. **80 features 对 24h 预测可能引入噪声** — 1h 改善但 24h 回退。需要 horizon-aware feature selection
-5. **并发 fetch 秒触 429** — 串行 + cron 滴灌（每小时一批）是唯一可靠方式
+1. **ERCOT archive filename ≠ data year** — `_2023.xlsx` contains 2022 data. Must verify timestamps
+2. **urllib3 Retry on 429 is a disaster** — Rapid retries exhaust hourly bandwidth. Handle 429 only with custom backoff
+3. **ERCOT limits hourly bandwidth** — Not request frequency. Quota resets every hour
+4. **80 features may introduce noise for 24h predictions** — 1h improved but 24h regressed. Need horizon-aware feature selection
+5. **Concurrent fetches trigger 429 instantly** — Serial + cron drip-feed (one batch per hour) is the only reliable approach

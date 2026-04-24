@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-RTM-DAM Delta 模型训练脚本
-==========================
-训练三种模型用于套利决策
+RTM-DAM Delta Model Training Script
+=====================================
+Train three models for arbitrage decision-making
 
-模型:
-1. 回归模型: 预测具体spread值
-2. 二分类模型: 预测spread方向 (RTM > DAM?)
-3. 多分类模型: 预测spread区间
+Models:
+1. Regression model: Predict specific spread values
+2. Binary classification model: Predict spread direction (RTM > DAM?)
+3. Multi-class classification model: Predict spread interval
 
-用法:
+Usage:
     python train_delta_models.py --input ../data/train_features.csv --output-dir ../models
 """
 
@@ -33,7 +33,7 @@ warnings.filterwarnings('ignore')
 
 
 def load_data(filepath: str) -> pd.DataFrame:
-    """加载特征数据"""
+    """Load feature data"""
     df = pd.read_csv(filepath)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = pd.to_datetime(df['date'])
@@ -42,12 +42,12 @@ def load_data(filepath: str) -> pd.DataFrame:
 
 def prepare_features_targets(df: pd.DataFrame) -> dict:
     """
-    准备特征和目标变量
+    Prepare features and target variables
 
     Returns:
         dict with X, y_reg, y_bin, y_multi
     """
-    # 特征列 (排除时间和目标列)
+    # Feature columns (exclude time and target columns)
     exclude_cols = [
         'timestamp', 'date',
         'target_spread', 'target_spread_last', 'target_direction', 'target_class',
@@ -60,7 +60,7 @@ def prepare_features_targets(df: pd.DataFrame) -> dict:
     y_bin = df['target_direction'].copy()
     y_multi = df['target_class'].copy()
 
-    # 记录naive预测基准
+    # Record naive prediction baseline
     naive_pred = df['spread_same_hour_hist'].copy()
 
     return {
@@ -76,7 +76,7 @@ def prepare_features_targets(df: pd.DataFrame) -> dict:
 
 def split_train_test(data: dict, test_ratio: float = 0.2) -> dict:
     """
-    时序切分训练/测试集
+    Time-series split into training/test sets
     """
     n = len(data['X'])
     train_size = int(n * (1 - test_ratio))
@@ -101,13 +101,13 @@ def split_train_test(data: dict, test_ratio: float = 0.2) -> dict:
 
 def train_regression_model(X_train, y_train, X_test, y_test, naive_test) -> dict:
     """
-    训练回归模型
+    Train regression model
     """
     print("\n" + "=" * 50)
-    print("训练回归模型 (预测Spread值)")
+    print("Training Regression Model (Predict Spread Value)")
     print("=" * 50)
 
-    # 定义分类特征
+    # Define categorical features
     cat_features = ['target_hour', 'target_dow', 'target_month', 'target_is_weekend',
                     'target_is_peak', 'target_is_summer', 'target_day_of_month', 'target_week']
     cat_indices = [i for i, col in enumerate(X_train.columns) if col in cat_features]
@@ -129,27 +129,27 @@ def train_regression_model(X_train, y_train, X_test, y_test, naive_test) -> dict
         use_best_model=True
     )
 
-    # 预测
+    # Predict
     y_pred = model.predict(X_test)
 
-    # 评估
+    # Evaluate
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     r2 = r2_score(y_test, y_pred)
 
-    # 与naive baseline对比
+    # Compare with naive baseline
     naive_mae = mean_absolute_error(y_test, naive_test)
     improvement = (naive_mae - mae) / naive_mae * 100
 
-    print(f"\n模型性能:")
+    print(f"\nModel performance:")
     print(f"  MAE: ${mae:.2f}")
     print(f"  RMSE: ${rmse:.2f}")
     print(f"  R²: {r2:.4f}")
-    print(f"\n基线对比:")
+    print(f"\nBaseline comparison:")
     print(f"  Naive MAE: ${naive_mae:.2f}")
-    print(f"  相对改进: {improvement:.1f}%")
+    print(f"  Relative improvement: {improvement:.1f}%")
 
-    # 特征重要性
+    # Feature importance
     importance = pd.DataFrame({
         'feature': X_train.columns,
         'importance': model.feature_importances_
@@ -171,10 +171,10 @@ def train_regression_model(X_train, y_train, X_test, y_test, naive_test) -> dict
 
 def train_binary_model(X_train, y_train, X_test, y_test) -> dict:
     """
-    训练二分类模型 (预测Spread方向)
+    Train binary classification model (Predict Spread Direction)
     """
     print("\n" + "=" * 50)
-    print("训练二分类模型 (预测Spread方向)")
+    print("Training Binary Classification Model (Predict Spread Direction)")
     print("=" * 50)
 
     cat_features = ['target_hour', 'target_dow', 'target_month', 'target_is_weekend',
@@ -190,7 +190,7 @@ def train_binary_model(X_train, y_train, X_test, y_test) -> dict:
         verbose=100,
         random_seed=42,
         cat_features=cat_indices,
-        auto_class_weights='Balanced'  # 处理类别不平衡
+        auto_class_weights='Balanced'  # Handle class imbalance
     )
 
     model.fit(
@@ -199,34 +199,34 @@ def train_binary_model(X_train, y_train, X_test, y_test) -> dict:
         use_best_model=True
     )
 
-    # 预测
+    # Predict
     y_pred = model.predict(X_test)
     y_prob = model.predict_proba(X_test)[:, 1]
 
-    # 评估
+    # Evaluate
     accuracy = accuracy_score(y_test, y_pred)
     precision = precision_score(y_test, y_pred)
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
     auc = roc_auc_score(y_test, y_prob)
 
-    # 基线: 预测多数类
+    # Baseline: predict majority class
     baseline_acc = max(y_test.mean(), 1 - y_test.mean())
 
-    print(f"\n模型性能:")
+    print(f"\nModel performance:")
     print(f"  Accuracy: {accuracy*100:.1f}%")
     print(f"  Precision: {precision*100:.1f}%")
     print(f"  Recall: {recall*100:.1f}%")
     print(f"  F1 Score: {f1:.4f}")
     print(f"  AUC: {auc:.4f}")
-    print(f"\n基线对比:")
-    print(f"  多数类准确率: {baseline_acc*100:.1f}%")
-    print(f"\n混淆矩阵:")
+    print(f"\nBaseline comparison:")
+    print(f"  Majority class accuracy: {baseline_acc*100:.1f}%")
+    print(f"\nConfusion matrix:")
     cm = confusion_matrix(y_test, y_pred)
     print(f"  [[TN={cm[0,0]:5d}, FP={cm[0,1]:5d}]")
     print(f"   [FN={cm[1,0]:5d}, TP={cm[1,1]:5d}]]")
 
-    # 特征重要性
+    # Feature importance
     importance = pd.DataFrame({
         'feature': X_train.columns,
         'importance': model.feature_importances_
@@ -251,10 +251,10 @@ def train_binary_model(X_train, y_train, X_test, y_test) -> dict:
 
 def train_multiclass_model(X_train, y_train, X_test, y_test) -> dict:
     """
-    训练多分类模型 (预测Spread区间)
+    Train multi-class classification model (Predict Spread Interval)
     """
     print("\n" + "=" * 50)
-    print("训练多分类模型 (预测Spread区间)")
+    print("Training Multi-class Classification Model (Predict Spread Interval)")
     print("=" * 50)
 
     cat_features = ['target_hour', 'target_dow', 'target_month', 'target_is_weekend',
@@ -279,36 +279,36 @@ def train_multiclass_model(X_train, y_train, X_test, y_test) -> dict:
         use_best_model=True
     )
 
-    # 预测
+    # Predict
     y_pred = model.predict(X_test).flatten()
     y_prob = model.predict_proba(X_test)
 
-    # 评估
+    # Evaluate
     accuracy = accuracy_score(y_test, y_pred)
     f1_macro = f1_score(y_test, y_pred, average='macro')
     f1_weighted = f1_score(y_test, y_pred, average='weighted')
 
-    # 基线: 预测最频繁类
+    # Baseline: predict most frequent class
     most_common = y_train.value_counts().idxmax()
     baseline_acc = (y_test == most_common).mean()
 
-    print(f"\n模型性能:")
+    print(f"\nModel performance:")
     print(f"  Accuracy: {accuracy*100:.1f}%")
     print(f"  Macro F1: {f1_macro:.4f}")
     print(f"  Weighted F1: {f1_weighted:.4f}")
-    print(f"\n基线对比:")
-    print(f"  最频繁类准确率: {baseline_acc*100:.1f}%")
+    print(f"\nBaseline comparison:")
+    print(f"  Most frequent class accuracy: {baseline_acc*100:.1f}%")
 
-    print(f"\n分类报告:")
+    print(f"\nClassification report:")
     class_labels = ['< -$20', '-$20~-$5', '-$5~$5', '$5~$20', '>= $20']
     print(classification_report(y_test, y_pred, target_names=class_labels))
 
-    # 混淆矩阵
+    # Confusion matrix
     cm = confusion_matrix(y_test, y_pred)
-    print("混淆矩阵:")
+    print("Confusion matrix:")
     print(cm)
 
-    # 特征重要性
+    # Feature importance
     importance = pd.DataFrame({
         'feature': X_train.columns,
         'importance': model.feature_importances_
@@ -336,17 +336,17 @@ def save_results(
     multi_result: dict,
     split_data: dict
 ) -> None:
-    """保存模型和结果"""
+    """Save models and results"""
     os.makedirs(output_dir, exist_ok=True)
 
-    # 保存模型
+    # Save models
     reg_result['model'].save_model(os.path.join(output_dir, 'regression_model.cbm'))
     bin_result['model'].save_model(os.path.join(output_dir, 'binary_model.cbm'))
     multi_result['model'].save_model(os.path.join(output_dir, 'multiclass_model.cbm'))
 
-    print(f"\n模型已保存到: {output_dir}")
+    print(f"\nModels saved to: {output_dir}")
 
-    # 保存评估结果
+    # Save evaluation results
     results_summary = {
         'regression': reg_result['metrics'],
         'binary': bin_result['metrics'],
@@ -360,7 +360,7 @@ def save_results(
     with open(os.path.join(output_dir, 'results.json'), 'w') as f:
         json.dump(results_summary, f, indent=2, default=str)
 
-    # 保存特征重要性
+    # Save feature importance
     reg_result['feature_importance'].to_csv(
         os.path.join(output_dir, 'feature_importance_regression.csv'), index=False)
     bin_result['feature_importance'].to_csv(
@@ -368,7 +368,7 @@ def save_results(
     multi_result['feature_importance'].to_csv(
         os.path.join(output_dir, 'feature_importance_multiclass.csv'), index=False)
 
-    # 保存预测结果 (用于回测)
+    # Save prediction results (for backtesting)
     predictions_df = pd.DataFrame({
         'timestamp': split_data['timestamps_test'].values,
         'actual_spread': split_data['y_reg_test'].values,
@@ -381,7 +381,7 @@ def save_results(
     })
     predictions_df.to_csv(os.path.join(output_dir, 'predictions.csv'), index=False)
 
-    print(f"结果已保存")
+    print(f"Results saved")
 
 
 def train_all_models(
@@ -390,64 +390,64 @@ def train_all_models(
     test_ratio: float = 0.2
 ) -> None:
     """
-    主函数: 训练所有模型
+    Main function: Train all models
     """
     print("=" * 60)
-    print("RTM-DAM Delta 模型训练")
+    print("RTM-DAM Delta Model Training")
     print("=" * 60)
 
-    # 1. 加载数据
-    print("\n1. 加载数据...")
+    # 1. Load data
+    print("\n1. Loading data...")
     df = load_data(input_path)
-    print(f"   总样本数: {len(df):,}")
+    print(f"   Total samples: {len(df):,}")
 
-    # 2. 准备特征和目标
-    print("\n2. 准备特征和目标变量...")
+    # 2. Prepare features and targets
+    print("\n2. Preparing features and target variables...")
     data = prepare_features_targets(df)
-    print(f"   特征数: {len(data['feature_cols'])}")
+    print(f"   Feature count: {len(data['feature_cols'])}")
 
-    # 3. 切分数据集
-    print("\n3. 切分训练/测试集...")
+    # 3. Split dataset
+    print("\n3. Splitting training/test sets...")
     split_data = split_train_test(data, test_ratio)
-    print(f"   训练集: {len(split_data['X_train']):,}")
-    print(f"   测试集: {len(split_data['X_test']):,}")
+    print(f"   Training set: {len(split_data['X_train']):,}")
+    print(f"   Test set: {len(split_data['X_test']):,}")
 
-    # 4. 训练回归模型
+    # 4. Train regression model
     reg_result = train_regression_model(
         split_data['X_train'], split_data['y_reg_train'],
         split_data['X_test'], split_data['y_reg_test'],
         split_data['naive_test']
     )
 
-    # 5. 训练二分类模型
+    # 5. Train binary classification model
     bin_result = train_binary_model(
         split_data['X_train'], split_data['y_bin_train'],
         split_data['X_test'], split_data['y_bin_test']
     )
 
-    # 6. 训练多分类模型
+    # 6. Train multi-class classification model
     multi_result = train_multiclass_model(
         split_data['X_train'], split_data['y_multi_train'],
         split_data['X_test'], split_data['y_multi_test']
     )
 
-    # 7. 保存结果
+    # 7. Save results
     print("\n" + "=" * 50)
-    print("保存模型和结果")
+    print("Saving Models and Results")
     print("=" * 50)
     save_results(output_dir, reg_result, bin_result, multi_result, split_data)
 
-    # 打印总结
+    # Print summary
     print("\n" + "=" * 60)
-    print("训练完成 - 结果总结")
+    print("Training Complete - Results Summary")
     print("=" * 60)
-    print(f"\n回归模型:")
-    print(f"  MAE: ${reg_result['metrics']['mae']:.2f} (基线: ${reg_result['metrics']['naive_mae']:.2f})")
-    print(f"  改进: {reg_result['metrics']['improvement']:.1f}%")
-    print(f"\n二分类模型:")
+    print(f"\nRegression model:")
+    print(f"  MAE: ${reg_result['metrics']['mae']:.2f} (baseline: ${reg_result['metrics']['naive_mae']:.2f})")
+    print(f"  Improvement: {reg_result['metrics']['improvement']:.1f}%")
+    print(f"\nBinary classification model:")
     print(f"  Accuracy: {bin_result['metrics']['accuracy']*100:.1f}%")
     print(f"  AUC: {bin_result['metrics']['auc']:.4f}")
-    print(f"\n多分类模型:")
+    print(f"\nMulti-class classification model:")
     print(f"  Accuracy: {multi_result['metrics']['accuracy']*100:.1f}%")
     print(f"  Macro F1: {multi_result['metrics']['f1_macro']:.4f}")
 

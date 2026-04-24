@@ -108,6 +108,92 @@ async def predict_dam_next_day(
 # RTM predictions
 # ---------------------------------------------------------------------------
 
+@router.get("/predictions/rtm/next-day")
+async def predict_rtm_next_day(
+    settlement_point: str = Query(default="HB_WEST", description="Settlement point (e.g. HB_WEST, LZ_WEST)"),
+    target_date: Optional[str] = Query(default=None, description="Target date YYYY-MM-DD (default: tomorrow)"),
+):
+    """
+    Next-day RTM price predictions (24 hours).
+
+    Uses the 1h-ahead LightGBM model on each hour's features to produce
+    hourly RTM price forecasts, mirroring the DAM next-day endpoint.
+    """
+    normalized_sp = normalize_settlement_point(settlement_point)
+
+    predictor = get_rtm_predictor()
+    if not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="RTM models not loaded")
+
+    sp_key = normalized_sp.lower()
+    if not predictor.has_model(sp_key):
+        raise HTTPException(
+            status_code=404,
+            detail=predictor.missing_model_message(normalized_sp),
+        )
+
+    target_dt = None
+    if target_date:
+        try:
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    try:
+        features_df = fetch_and_compute_features(normalized_sp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Data pipeline failed: {e}")
+
+    if target_dt:
+        target_rows = features_df[features_df["delivery_date"] == str(target_dt)]
+    else:
+        target_rows = latest_complete_delivery_rows(features_df)
+
+    if target_rows.empty:
+        raise HTTPException(status_code=404, detail="Insufficient data to generate predictions for target date")
+
+    try:
+        # Add RTM extra features and run 1h model on each hour
+        df = predictor.add_rtm_features(target_rows)
+        df = df.fillna(0)
+
+        from ..models.rtm_predictor import FEATURE_COLS as RTM_FEATURE_COLS
+        missing = [col for col in RTM_FEATURE_COLS if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing RTM feature columns: {missing}")
+
+        model = predictor.models[sp_key].get("1h")
+        if model is None:
+            raise HTTPException(status_code=404, detail=f"No 1h RTM model for {normalized_sp}")
+
+        X = df[RTM_FEATURE_COLS]
+        preds = model.predict(X)
+        delivery_date = target_rows["delivery_date"].iloc[0]
+
+        return {
+            "status": "success",
+            "model": "RTM 1h-ahead LightGBM",
+            "settlement_point": normalized_sp,
+            "delivery_date": delivery_date,
+            "generated_at": datetime.utcnow().isoformat(),
+            "predictions": [
+                {
+                    "hour_ending": f"{int(df.iloc[i].get('hour_of_day', i + 1)):02d}:00",
+                    "predicted_price": round(float(preds[i]), 2),
+                }
+                for i in range(len(preds))
+            ],
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/predictions/rtm")
 async def predict_rtm(
     settlement_point: str = Query(default="HB_WEST", description="Settlement point"),

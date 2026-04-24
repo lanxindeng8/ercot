@@ -1,8 +1,8 @@
 """
-特征工程模块
+Feature Engineering Module
 
-实现 ERCOT RTM LMP Spike 预测的特征计算
-包括：价格结构、供需平衡、天气驱动、时间特征
+Implements feature computation for ERCOT RTM LMP Spike prediction
+Including: price structure, supply-demand balance, weather-driven, and temporal features
 """
 
 import pandas as pd
@@ -11,44 +11,44 @@ from typing import Dict, List, Optional
 
 
 class PriceStructureFeatures:
-    """价格结构特征计算
+    """Price structure feature computation
 
-    目标：捕捉区域性稀缺与拥塞信号
+    Objective: Capture regional scarcity and congestion signals
     """
 
     @staticmethod
     def calculate(df: pd.DataFrame, zones: List[str] = ['CPS', 'West', 'Houston']) -> pd.DataFrame:
-        """计算价格结构特征
+        """Compute price structure features
 
         Args:
-            df: 包含价格数据的 DataFrame
-                必需列: P_CPS, P_West, P_Houston, P_Hub, P_CPS_DA, P_West_DA, P_Houston_DA
-            zones: 区域列表
+            df: DataFrame containing price data
+                Required columns: P_CPS, P_West, P_Houston, P_Hub, P_CPS_DA, P_West_DA, P_Houston_DA
+            zones: List of zones
 
         Returns:
-            包含价格结构特征的 DataFrame
+            DataFrame containing price structure features
         """
         features = pd.DataFrame(index=df.index)
 
         for zone in zones:
-            # 1. 区域-系统价差
+            # 1. Zone-system spread
             features[f'spread_{zone}_hub'] = df[f'P_{zone}'] - df['P_Hub']
 
-            # 2. 实时-日前溢价
+            # 2. Real-time to day-ahead premium
             if f'P_{zone}_DA' in df.columns:
                 features[f'spread_rt_da_{zone}'] = df[f'P_{zone}'] - df[f'P_{zone}_DA']
 
-            # 3. 价格斜率 (5分钟)
-            # 假设数据是5分钟间隔
+            # 3. Price slope (5-minute)
+            # Assumes data is at 5-minute intervals
             features[f'price_ramp_5m_{zone}'] = df[f'P_{zone}'].diff(1) / 5  # $/MWh/min
 
-            # 4. 价格斜率 (15分钟)
-            features[f'price_ramp_15m_{zone}'] = df[f'P_{zone}'].diff(3) / 15  # 假设3个5分钟步长
+            # 4. Price slope (15-minute)
+            features[f'price_ramp_15m_{zone}'] = df[f'P_{zone}'].diff(3) / 15  # Assumes 3 five-minute steps
 
-            # 5. 价格加速度
+            # 5. Price acceleration
             features[f'price_accel_{zone}'] = features[f'price_ramp_5m_{zone}'].diff(1)
 
-        # 6. 跨区域价差 (特别关注 CPS-Houston)
+        # 6. Cross-zone spread (special focus on CPS-Houston)
         if 'CPS' in zones and 'Houston' in zones:
             features['spread_CPS_Houston'] = df['P_CPS'] - df['P_Houston']
             features['spread_CPS_Houston_ramp'] = features['spread_CPS_Houston'].diff(1)
@@ -57,69 +57,69 @@ class PriceStructureFeatures:
 
 
 class SupplyDemandFeatures:
-    """供需平衡特征计算
+    """Supply-demand balance feature computation
 
-    目标：捕捉系统/区域紧张状态
+    Objective: Capture system/regional stress conditions
     """
 
     @staticmethod
     def calculate(df: pd.DataFrame, lookback_days: int = 30) -> pd.DataFrame:
-        """计算供需平衡特征
+        """Compute supply-demand balance features
 
         Args:
-            df: 包含系统数据的 DataFrame
-                必需列: Load, Wind, Solar, Gas, Coal, ESR
-            lookback_days: 滚动窗口天数（用于计算异常值）
+            df: DataFrame containing system data
+                Required columns: Load, Wind, Solar, Gas, Coal, ESR
+            lookback_days: Rolling window in days (for computing anomalies)
 
         Returns:
-            包含供需平衡特征的 DataFrame
+            DataFrame containing supply-demand balance features
         """
         features = pd.DataFrame(index=df.index)
 
-        # 1. 净负荷
+        # 1. Net load
         features['net_load'] = df['Load'] - df['Wind'] - df['Solar']
 
-        # 2. 净负荷爬坡速度 (MW/5min)
+        # 2. Net load ramp rate (MW/5min)
         features['net_load_ramp_5m'] = features['net_load'].diff(1)
         features['net_load_ramp_15m'] = features['net_load'].diff(3)
 
-        # 3. 净负荷加速度
+        # 3. Net load acceleration
         features['net_load_accel'] = features['net_load_ramp_5m'].diff(1)
 
-        # 4. 风电特征
-        # 滚动均值和标准差（用于计算异常值）
-        window_size = lookback_days * 24 * 12  # 假设5分钟数据
+        # 4. Wind features
+        # Rolling mean and standard deviation (for computing anomalies)
+        window_size = lookback_days * 24 * 12  # Assumes 5-minute data
         wind_rolling_mean = df['Wind'].rolling(window=window_size, min_periods=1).mean()
         wind_rolling_std = df['Wind'].rolling(window=window_size, min_periods=1).std()
 
-        # 风电异常（标准化偏差）
+        # Wind anomaly (standardized deviation)
         features['wind_anomaly'] = (df['Wind'] - wind_rolling_mean) / (wind_rolling_std + 1e-6)
 
-        # 风电爬坡
+        # Wind ramp
         features['wind_ramp'] = df['Wind'].diff(1)
         features['wind_ramp_15m'] = df['Wind'].diff(3)
 
-        # 5. 气电饱和度
-        # 使用7天滚动95分位数作为参考容量
+        # 5. Gas generation saturation
+        # Using 7-day rolling 95th percentile as reference capacity
         gas_window = 7 * 24 * 12
         gas_p95 = df['Gas'].rolling(window=gas_window, min_periods=1).quantile(0.95)
         features['gas_saturation'] = df['Gas'] / (gas_p95 + 1e-6)
 
-        # 6. 煤电压力（夜间上行标志）
-        # 煤电变化
+        # 6. Coal stress (nighttime ramp-up flag)
+        # Coal change
         coal_diff = df['Coal'].diff(1)
-        # 夜间时段 (0-5点)
+        # Nighttime hours (0-5)
         is_night = df.index.hour.isin(range(0, 6))
-        # 夜间煤电上行
+        # Nighttime coal ramp-up
         features['coal_stress'] = ((coal_diff > 0) & is_night).astype(int)
         features['coal_ramp'] = coal_diff
 
-        # 7. 储能系统净出力
+        # 7. Energy storage system net output
         features['esr_net_output'] = df['ESR']
         features['esr_is_charging'] = (df['ESR'] < 0).astype(int)
         features['esr_is_discharging'] = (df['ESR'] > 0).astype(int)
 
-        # 8. 光伏爬坡
+        # 8. Solar ramp
         features['solar_ramp'] = df['Solar'].diff(1)
         features['solar_ramp_15m'] = df['Solar'].diff(3)
 
@@ -127,24 +127,24 @@ class SupplyDemandFeatures:
 
 
 class WeatherFeatures:
-    """天气驱动特征计算 (Zone-level)
+    """Weather-driven feature computation (Zone-level)
 
-    目标：捕捉需求侧冲击信号
+    Objective: Capture demand-side shock signals
     """
 
     @staticmethod
     def calculate(df: pd.DataFrame, zones: List[str] = ['CPS', 'West', 'Houston'],
                   lookback_days: int = 30) -> pd.DataFrame:
-        """计算天气驱动特征
+        """Compute weather-driven features
 
         Args:
-            df: 包含天气数据的 DataFrame
-                必需列: T_{zone}, WindSpeed_{zone}, WindDir_{zone} for each zone
-            zones: 区域列表
-            lookback_days: 滚动窗口天数
+            df: DataFrame containing weather data
+                Required columns: T_{zone}, WindSpeed_{zone}, WindDir_{zone} for each zone
+            zones: List of zones
+            lookback_days: Rolling window in days
 
         Returns:
-            包含天气特征的 DataFrame
+            DataFrame containing weather features
         """
         features = pd.DataFrame(index=df.index)
 
@@ -156,34 +156,34 @@ class WeatherFeatures:
             if temp_col not in df.columns:
                 continue
 
-            # 1. 温度异常（相对于历史同小时均值）
-            # 按小时分组计算滚动均值
+            # 1. Temperature anomaly (relative to historical same-hour mean)
+            # Compute rolling mean grouped by hour
             hourly_temp_mean = df.groupby(df.index.hour)[temp_col].transform(
                 lambda x: x.rolling(window=lookback_days, min_periods=1).mean()
             )
             features[f'T_anomaly_{zone}'] = df[temp_col] - hourly_temp_mean
 
-            # 2. 降温速度 (°F/hour)
-            # 假设数据是15分钟间隔，12个步长 = 1小时
-            features[f'T_ramp_{zone}'] = df[temp_col].diff(12) / 1  # °F/hr
+            # 2. Cooling rate (degrees F/hour)
+            # Assumes data is at 15-minute intervals, 12 steps = 1 hour
+            features[f'T_ramp_{zone}'] = df[temp_col].diff(12) / 1  # degrees F/hr
 
-            # 3. 风寒指数 (Wind Chill)
+            # 3. Wind Chill Index
             if wind_speed_col in df.columns:
                 T = df[temp_col]
                 v = df[wind_speed_col]
-                # Wind Chill formula (适用于 T ≤ 50°F 和 v ≥ 3 mph)
+                # Wind Chill formula (applicable for T <= 50 degrees F and v >= 3 mph)
                 features[f'WindChill_{zone}'] = (
                     35.74 + 0.6215 * T - 35.75 * (v ** 0.16) + 0.4275 * T * (v ** 0.16)
                 )
-                # 对于不适用的情况，使用实际温度
+                # For inapplicable conditions, use actual temperature
                 mask = (T > 50) | (v < 3)
                 features.loc[mask, f'WindChill_{zone}'] = T[mask]
 
-            # 4. 冷锋标志
+            # 4. Cold front flag
             if wind_dir_col in df.columns:
-                # 北风：风向在 315-45 度之间
+                # North wind: wind direction between 315-45 degrees
                 wind_to_north = (df[wind_dir_col] > 315) | (df[wind_dir_col] < 45)
-                # 快速降温 + 北风 = 冷锋
+                # Rapid cooling + north wind = cold front
                 features[f'ColdFront_{zone}'] = (
                     (features[f'T_ramp_{zone}'] < -5) & wind_to_north
                 ).astype(int)
@@ -194,119 +194,119 @@ class WeatherFeatures:
 
 
 class TemporalFeatures:
-    """时间特征计算
+    """Temporal feature computation
 
-    目标：捕捉日内模式与光伏修复窗口
+    Objective: Capture intraday patterns and solar recovery windows
     """
 
     @staticmethod
     def calculate(df: pd.DataFrame, latitude: float = 29.76) -> pd.DataFrame:
-        """计算时间特征
+        """Compute temporal features
 
         Args:
             df: DataFrame with datetime index
-            latitude: 纬度（用于计算日出时间，San Antonio ~29.76°N）
+            latitude: Latitude (for computing sunrise time, San Antonio ~29.76 degrees N)
 
         Returns:
-            包含时间特征的 DataFrame
+            DataFrame containing temporal features
         """
         features = pd.DataFrame(index=df.index)
 
-        # 1. 基础时间特征
+        # 1. Basic temporal features
         features['hour'] = df.index.hour
         features['day_of_week'] = df.index.dayofweek
         features['month'] = df.index.month
 
-        # 2. 晚高峰标志
+        # 2. Evening peak flag
         features['is_evening_peak'] = df.index.hour.isin(range(17, 23)).astype(int)
 
-        # 3. 日出时间估算（简化版）
-        # 这里使用简化公式，实际应用中可以使用 ephem 或 astral 库
+        # 3. Sunrise time estimation (simplified version)
+        # Simplified formula used here; in production use the ephem or astral library
         day_of_year = df.index.dayofyear
-        # 简化的日出时间计算（小时，本地时间）
-        # 这只是近似值，实际项目中应使用准确的天文算法
+        # Simplified sunrise time calculation (hours, local time)
+        # This is an approximation; use accurate astronomical algorithms in production
         declination = 23.45 * np.sin(np.radians((360/365) * (day_of_year - 81)))
         sunrise_hour = 12 - (1/15) * np.degrees(
             np.arccos(-np.tan(np.radians(latitude)) * np.tan(np.radians(declination)))
         )
 
-        # 距离日出的时间（分钟）
+        # Minutes to sunrise
         current_hour = df.index.hour + df.index.minute / 60
         minutes_to_sunrise = (sunrise_hour - current_hour) * 60
-        # 处理跨日情况
+        # Handle day-crossing cases
         minutes_to_sunrise = np.where(minutes_to_sunrise < -720, minutes_to_sunrise + 1440, minutes_to_sunrise)
         features['minutes_to_sunrise'] = minutes_to_sunrise
 
-        # 4. 日出前后标志
+        # 4. Pre/post sunrise flags
         features['is_pre_sunrise'] = (minutes_to_sunrise > 0) & (minutes_to_sunrise < 120)
         features['is_post_sunrise'] = (minutes_to_sunrise < 0) & (minutes_to_sunrise > -120)
 
-        # 5. 光伏爬坡预期（如果有Solar数据）
+        # 5. Expected solar ramp (if Solar data is available)
         if 'Solar' in df.columns:
-            features['solar_ramp_expected'] = df['Solar'].diff(3)  # 15分钟变化
+            features['solar_ramp_expected'] = df['Solar'].diff(3)  # 15-minute change
 
         return features
 
 
 class FeatureEngineer:
-    """特征工程主类
+    """Feature engineering main class
 
-    整合所有特征计算模块
+    Integrates all feature computation modules
     """
 
     def __init__(self, zones: List[str] = ['CPS', 'West', 'Houston'],
                  lookback_days: int = 30):
-        """初始化
+        """Initialize
 
         Args:
-            zones: 需要计算特征的区域列表
-            lookback_days: 滚动窗口天数
+            zones: List of zones for which to compute features
+            lookback_days: Rolling window in days
         """
         self.zones = zones
         self.lookback_days = lookback_days
 
     def calculate_all_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """计算所有特征
+        """Compute all features
 
         Args:
-            df: 原始数据 DataFrame
+            df: Raw data DataFrame
 
         Returns:
-            包含所有特征的 DataFrame
+            DataFrame containing all features
         """
-        print("计算价格结构特征...")
+        print("Computing price structure features...")
         price_features = PriceStructureFeatures.calculate(df, self.zones)
 
-        print("计算供需平衡特征...")
+        print("Computing supply-demand balance features...")
         supply_demand_features = SupplyDemandFeatures.calculate(df, self.lookback_days)
 
-        print("计算天气驱动特征...")
+        print("Computing weather-driven features...")
         weather_features = WeatherFeatures.calculate(df, self.zones, self.lookback_days)
 
-        print("计算时间特征...")
+        print("Computing temporal features...")
         temporal_features = TemporalFeatures.calculate(df)
 
-        # 合并所有特征
+        # Merge all features
         all_features = pd.concat([
-            df,  # 保留原始数据
+            df,  # Preserve original data
             price_features,
             supply_demand_features,
             weather_features,
             temporal_features
         ], axis=1)
 
-        print(f"特征计算完成！总特征数: {len(all_features.columns)}")
+        print(f"Feature computation complete! Total features: {len(all_features.columns)}")
 
         return all_features
 
     def get_feature_names(self, feature_type: Optional[str] = None) -> List[str]:
-        """获取特征名称列表
+        """Get feature name list
 
         Args:
-            feature_type: 特征类型 ('price', 'supply_demand', 'weather', 'temporal', None=all)
+            feature_type: Feature type ('price', 'supply_demand', 'weather', 'temporal', None=all)
 
         Returns:
-            特征名称列表
+            List of feature names
         """
         if feature_type == 'price':
             features = []
@@ -352,7 +352,7 @@ class FeatureEngineer:
             ]
 
         else:
-            # 返回所有特征
+            # Return all features
             return (
                 self.get_feature_names('price') +
                 self.get_feature_names('supply_demand') +
@@ -362,10 +362,10 @@ class FeatureEngineer:
 
 
 if __name__ == '__main__':
-    # 测试代码
-    print("特征工程模块加载成功！")
-    print("\n支持的特征类型:")
-    print("1. 价格结构特征 (Price Structure)")
-    print("2. 供需平衡特征 (Supply-Demand Balance)")
-    print("3. 天气驱动特征 (Weather-Driven)")
-    print("4. 时间特征 (Temporal)")
+    # Test code
+    print("Feature engineering module loaded successfully!")
+    print("\nSupported feature types:")
+    print("1. Price Structure Features")
+    print("2. Supply-Demand Balance Features")
+    print("3. Weather-Driven Features")
+    print("4. Temporal Features")

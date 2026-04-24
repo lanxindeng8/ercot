@@ -89,10 +89,11 @@ class SQLiteFetcher:
         try:
             cdr_query = (
                 "SELECT time, hour_ending, lmp FROM dam_lmp_cdr "
-                "WHERE settlement_point = ? AND oper_day >= ? "
-                "ORDER BY oper_day, hour_ending"
+                "WHERE settlement_point = ? AND time >= ? "
+                "ORDER BY time, hour_ending"
             )
-            df_cdr = pd.read_sql_query(cdr_query, conn, params=[settlement_point, date_from])
+            iso_from = start_date.strftime("%Y-%m-%dT%H:%M:%S")
+            df_cdr = pd.read_sql_query(cdr_query, conn, params=[settlement_point, iso_from])
         except Exception:
             df_cdr = pd.DataFrame()
 

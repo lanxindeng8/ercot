@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-RTM-DAM Delta 特征工程脚本 (40小时预测)
-========================================
-为日前套利策略创建特征
+RTM-DAM Delta Feature Engineering Script (40-hour Prediction)
+==============================================================
+Create features for day-ahead arbitrage strategy
 
-预测场景:
-    - 预测时间: D-1日 上午10:00
-    - 目标时间: D日 00:00 ~ 23:00 (24个小时)
-    - 预测提前量: 14~38小时
+Prediction Scenario:
+    - Prediction time: Day D-1, 10:00 AM
+    - Target time: Day D, 00:00 ~ 23:00 (24 hours)
+    - Prediction lead time: 14~38 hours
 
-特征设计原则:
-    - 只使用预测时刻之前的历史数据
-    - DAM价格在预测时刻已知 (DAM在D-1日清算)
-    - 目标小时的时间特征是已知的
+Feature Design Principles:
+    - Only use historical data available before the prediction time
+    - DAM price is known at prediction time (DAM clears on D-1)
+    - Time features for the target hour are known
 
-用法:
+Usage:
     python delta_feature_extraction.py --input ../data/spread_data.csv --output ../data/train_features.csv
 """
 
@@ -29,49 +29,49 @@ warnings.filterwarnings('ignore')
 
 def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
     """
-    创建训练样本
+    Create training samples
 
-    每个样本代表:
-    - 在某一天D-1的10:00 (或最新可用时刻)
-    - 预测D日某小时的spread
+    Each sample represents:
+    - At 10:00 AM on Day D-1 (or latest available time)
+    - Predicting the spread for a specific hour on Day D
 
-    特征:
-    - 历史spread/RTM/DAM统计 (截至D-1日的最新数据)
-    - 目标小时的DAM价格 (已知)
-    - 目标小时的时间特征
+    Features:
+    - Historical spread/RTM/DAM statistics (up to the latest data on D-1)
+    - DAM price for the target hour (known)
+    - Time features for the target hour
     """
-    print("创建训练样本...")
+    print("Creating training samples...")
 
-    # 按日期分组
+    # Group by date
     df['date'] = df['timestamp'].dt.date
 
-    # 获取唯一日期
+    # Get unique dates
     dates = sorted(df['date'].unique())
 
     samples = []
 
-    for i in tqdm(range(1, len(dates)), desc="处理每日数据"):
-        # D-1日 (历史数据日)
+    for i in tqdm(range(1, len(dates)), desc="Processing daily data"):
+        # Day D-1 (historical data day)
         hist_date = dates[i-1]
-        # D日 (目标预测日)
+        # Day D (target prediction day)
         target_date = dates[i]
 
-        # 获取D-1日数据 (用于计算历史特征)
+        # Get D-1 data (for computing historical features)
         hist_data = df[df['date'] <= hist_date].copy()
-        if len(hist_data) < 168:  # 至少需要7天历史
+        if len(hist_data) < 168:  # Need at least 7 days of history
             continue
 
-        # 获取D日数据 (用于提取目标)
+        # Get Day D data (for extracting targets)
         target_data = df[df['date'] == target_date].copy()
         if len(target_data) == 0:
             continue
 
-        # 历史统计特征 (基于D-1日及之前所有数据)
-        recent_168h = hist_data.tail(168)  # 最近7天
-        recent_24h = hist_data.tail(24)    # 最近1天
+        # Historical statistical features (based on all data up to and including D-1)
+        recent_168h = hist_data.tail(168)  # Most recent 7 days
+        recent_24h = hist_data.tail(24)    # Most recent 1 day
 
         hist_features = {
-            # 近期spread统计
+            # Recent spread statistics
             'spread_mean_7d': recent_168h['spread'].mean(),
             'spread_std_7d': recent_168h['spread'].std(),
             'spread_max_7d': recent_168h['spread'].max(),
@@ -81,7 +81,7 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
             'spread_mean_24h': recent_24h['spread'].mean(),
             'spread_std_24h': recent_24h['spread'].std(),
 
-            # 近期RTM统计
+            # Recent RTM statistics
             'rtm_mean_7d': recent_168h['rtm_mean'].mean(),
             'rtm_std_7d': recent_168h['rtm_mean'].std(),
             'rtm_max_7d': recent_168h['rtm_max'].max(),
@@ -89,24 +89,24 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
             'rtm_mean_24h': recent_24h['rtm_mean'].mean(),
             'rtm_volatility_24h': recent_24h['rtm_std'].mean(),
 
-            # 近期DAM统计
+            # Recent DAM statistics
             'dam_mean_7d': recent_168h['dam_price'].mean(),
             'dam_std_7d': recent_168h['dam_price'].std(),
             'dam_mean_24h': recent_24h['dam_price'].mean(),
 
-            # Spread方向统计
+            # Spread direction statistics
             'spread_positive_ratio_7d': (recent_168h['spread'] > 0).mean(),
             'spread_positive_ratio_24h': (recent_24h['spread'] > 0).mean(),
 
-            # Spike计数
+            # Spike counts
             'spike_count_7d': (recent_168h['spread'].abs() > 20).sum(),
             'rtm_spike_count_7d': (recent_168h['rtm_mean'] > 100).sum(),
 
-            # 趋势特征
+            # Trend features
             'spread_trend_7d': recent_168h['spread'].iloc[-24:].mean() - recent_168h['spread'].iloc[:24].mean(),
         }
 
-        # 按小时分组的历史均值 (用于同时段预测)
+        # Hourly grouped historical means (for same-hour prediction)
         hourly_hist = hist_data.groupby('hour').agg({
             'spread': ['mean', 'std'],
             'rtm_mean': 'mean',
@@ -114,11 +114,11 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
         })
         hourly_hist.columns = ['spread_by_hour_mean', 'spread_by_hour_std', 'rtm_by_hour_mean', 'dam_by_hour_mean']
 
-        # 按小时+星期几分组
+        # Group by hour + day of week
         hist_data['dow'] = pd.to_datetime(hist_data['date']).dt.dayofweek
         dow_hour_hist = hist_data.groupby(['dow', 'hour'])['spread'].mean().to_dict()
 
-        # 为D日每个小时创建样本
+        # Create a sample for each hour of Day D
         target_dow = pd.to_datetime(target_date).dayofweek
         target_month = pd.to_datetime(target_date).month
         target_day_of_month = pd.to_datetime(target_date).day
@@ -128,20 +128,20 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
             target_hour = row['hour']
 
             sample = {
-                # 时间ID
+                # Time ID
                 'timestamp': row['timestamp'],
                 'date': target_date,
 
-                # 目标变量
+                # Target variables
                 'target_spread': row['spread'],
                 'target_spread_last': row['spread_last'],
                 'target_direction': row['spread_direction'],
                 'target_class': row['spread_class'],
 
-                # 目标小时DAM价格 (已知)
+                # Target hour DAM price (known)
                 'target_dam_price': row['dam_price'],
 
-                # 目标小时时间特征
+                # Target hour time features
                 'target_hour': target_hour,
                 'target_dow': target_dow,
                 'target_month': target_month,
@@ -151,23 +151,23 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
                 'target_is_peak': int((6 <= target_hour <= 10) or (17 <= target_hour <= 21)),
                 'target_is_summer': int(target_month in [6, 7, 8, 9]),
 
-                # 历史统计特征
+                # Historical statistical features
                 **hist_features,
 
-                # 同时段历史特征
+                # Same-hour historical features
                 'spread_same_hour_hist': hourly_hist.loc[target_hour, 'spread_by_hour_mean'] if target_hour in hourly_hist.index else np.nan,
                 'spread_same_hour_std': hourly_hist.loc[target_hour, 'spread_by_hour_std'] if target_hour in hourly_hist.index else np.nan,
                 'rtm_same_hour_hist': hourly_hist.loc[target_hour, 'rtm_by_hour_mean'] if target_hour in hourly_hist.index else np.nan,
 
-                # 同时段+同星期几历史
+                # Same hour + same day-of-week historical
                 'spread_same_dow_hour': dow_hour_hist.get((target_dow, target_hour), np.nan),
 
-                # DAM相对特征
+                # DAM relative features
                 'dam_vs_7d_mean': row['dam_price'] - hist_features['dam_mean_7d'],
                 'dam_percentile_7d': (recent_168h['dam_price'] < row['dam_price']).mean(),
             }
 
-            # 上周同时段的实际spread (如果有)
+            # Actual spread from the same hour last week (if available)
             same_hour_last_week = hist_data[(hist_data['hour'] == target_hour) &
                                             (hist_data['dow'] == target_dow)].tail(1)
             if len(same_hour_last_week) > 0:
@@ -182,13 +182,13 @@ def create_training_samples(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    """添加衍生特征"""
-    # DAM价格区间
+    """Add derived features"""
+    # DAM price level
     df['dam_price_level'] = pd.cut(df['target_dam_price'],
                                     bins=[0, 20, 40, 60, 100, 200, np.inf],
                                     labels=[0, 1, 2, 3, 4, 5]).astype(float)
 
-    # 时间周期编码
+    # Cyclical time encoding
     df['hour_sin'] = np.sin(2 * np.pi * df['target_hour'] / 24)
     df['hour_cos'] = np.cos(2 * np.pi * df['target_hour'] / 24)
     df['dow_sin'] = np.sin(2 * np.pi * df['target_dow'] / 7)
@@ -196,10 +196,10 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     df['month_sin'] = np.sin(2 * np.pi * df['target_month'] / 12)
     df['month_cos'] = np.cos(2 * np.pi * df['target_month'] / 12)
 
-    # 预测误差基准 (naive预测: 使用历史同时段均值)
+    # Prediction error baseline (naive prediction: use historical same-hour mean)
     df['naive_pred'] = df['spread_same_hour_hist']
 
-    # 相对特征
+    # Relative features
     df['dam_vs_same_hour'] = df['target_dam_price'] - df['rtm_same_hour_hist'].fillna(df['rtm_mean_7d'])
 
     return df
@@ -207,13 +207,13 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def select_features(df: pd.DataFrame) -> tuple:
     """
-    选择特征列
+    Select feature columns
 
     Returns:
-    - feature_cols: 特征列名列表
-    - target_cols: 目标列名字典
+    - feature_cols: list of feature column names
+    - target_cols: dictionary of target column names
     """
-    # 排除非特征列
+    # Exclude non-feature columns
     exclude_cols = [
         'timestamp', 'date',
         'target_spread', 'target_spread_last', 'target_direction', 'target_class',
@@ -236,52 +236,52 @@ def extract_delta_features(
     output_path: str
 ) -> pd.DataFrame:
     """
-    主函数: 提取Delta预测特征
+    Main function: Extract Delta prediction features
     """
     print("=" * 60)
-    print("RTM-DAM Delta 特征工程 (40小时预测)")
+    print("RTM-DAM Delta Feature Engineering (40-hour Prediction)")
     print("=" * 60)
 
-    # 1. 加载数据
-    print("\n1. 加载Spread数据...")
+    # 1. Load data
+    print("\n1. Loading Spread data...")
     df = pd.read_csv(input_path)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    print(f"   原始样本数: {len(df):,}")
+    print(f"   Raw sample count: {len(df):,}")
 
-    # 2. 创建训练样本
-    print("\n2. 创建训练样本...")
+    # 2. Create training samples
+    print("\n2. Creating training samples...")
     samples_df = create_training_samples(df)
-    print(f"   训练样本数: {len(samples_df):,}")
+    print(f"   Training sample count: {len(samples_df):,}")
 
-    # 3. 添加衍生特征
-    print("\n3. 添加衍生特征...")
+    # 3. Add derived features
+    print("\n3. Adding derived features...")
     samples_df = add_derived_features(samples_df)
 
-    # 4. 处理缺失值
-    print("\n4. 处理缺失值...")
+    # 4. Handle missing values
+    print("\n4. Handling missing values...")
     samples_df = samples_df.dropna()
-    print(f"   有效样本数: {len(samples_df):,}")
+    print(f"   Valid sample count: {len(samples_df):,}")
 
-    # 5. 保存
-    print("\n5. 保存特征数据...")
+    # 5. Save
+    print("\n5. Saving feature data...")
     samples_df.to_csv(output_path, index=False)
-    print(f"   已保存: {output_path}")
+    print(f"   Saved to: {output_path}")
 
-    # 打印特征信息
+    # Print feature information
     feature_cols, target_cols = select_features(samples_df)
-    print(f"\n特征数量: {len(feature_cols)}")
-    print(f"特征列表:")
+    print(f"\nFeature count: {len(feature_cols)}")
+    print(f"Feature list:")
     for i, col in enumerate(feature_cols, 1):
         print(f"  {i:2d}. {col}")
 
-    # 打印目标变量统计
-    print("\n目标变量统计:")
-    print(f"  回归目标 (spread): 均值={samples_df['target_spread'].mean():.2f}, 标准差={samples_df['target_spread'].std():.2f}")
-    print(f"  二分类目标: RTM>DAM={samples_df['target_direction'].mean()*100:.1f}%")
-    print(f"  多分类目标分布:")
+    # Print target variable statistics
+    print("\nTarget variable statistics:")
+    print(f"  Regression target (spread): mean={samples_df['target_spread'].mean():.2f}, std={samples_df['target_spread'].std():.2f}")
+    print(f"  Binary target: RTM>DAM={samples_df['target_direction'].mean()*100:.1f}%")
+    print(f"  Multi-class target distribution:")
     for c in range(5):
         pct = (samples_df['target_class'] == c).mean() * 100
-        print(f"    类别{c}: {pct:.1f}%")
+        print(f"    Class {c}: {pct:.1f}%")
 
     return samples_df
 

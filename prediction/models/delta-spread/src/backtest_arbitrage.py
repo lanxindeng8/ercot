@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-RTM-DAM 套利策略回测脚本
-=========================
-基于Delta预测模型进行套利策略回测
+RTM-DAM Arbitrage Strategy Backtest Script
+===========================================
+Backtest arbitrage strategies based on Delta prediction models
 
-套利逻辑:
-- 预测 RTM > DAM: 在DAM买入 → 在RTM卖出 (获利 = RTM - DAM = Spread)
-- 预测 RTM < DAM: 在DAM卖出 → 在RTM买回 (获利 = DAM - RTM = -Spread)
+Arbitrage Logic:
+- Predict RTM > DAM: Buy in DAM -> Sell in RTM (profit = RTM - DAM = Spread)
+- Predict RTM < DAM: Sell in DAM -> Buy back in RTM (profit = DAM - RTM = -Spread)
 
-策略版本:
-1. 基于方向预测 (二分类模型)
-2. 基于区间预测 (多分类模型, 只在高置信区间交易)
-3. 基于spread预测值 (回归模型, 设定阈值)
+Strategy Versions:
+1. Based on direction prediction (binary classification model)
+2. Based on interval prediction (multi-class model, trade only in high-confidence intervals)
+3. Based on spread prediction value (regression model, with threshold)
 
-用法:
+Usage:
     python backtest_arbitrage.py --predictions ../models/predictions.csv --output ../results/backtest_results.csv
 """
 
@@ -26,7 +26,7 @@ from datetime import datetime
 
 
 def load_predictions(filepath: str) -> pd.DataFrame:
-    """加载模型预测结果"""
+    """Load model prediction results"""
     df = pd.read_csv(filepath)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
@@ -35,19 +35,19 @@ def load_predictions(filepath: str) -> pd.DataFrame:
 
 def strategy_binary(df: pd.DataFrame) -> pd.DataFrame:
     """
-    策略1: 基于二分类模型
+    Strategy 1: Based on binary classification model
 
-    - 预测 direction=1 (RTM>DAM): Long spread (买DAM卖RTM)
-    - 预测 direction=0 (RTM<DAM): Short spread (卖DAM买RTM)
+    - Predicted direction=1 (RTM>DAM): Long spread (buy DAM, sell RTM)
+    - Predicted direction=0 (RTM<DAM): Short spread (sell DAM, buy RTM)
     """
     df = df.copy()
 
-    # 交易信号: 1=Long spread, -1=Short spread
+    # Trading signal: 1=Long spread, -1=Short spread
     df['signal'] = df['pred_direction'].apply(lambda x: 1 if x == 1 else -1)
 
-    # 每笔交易收益 = signal * actual_spread
-    # Long spread收益 = actual_spread (如果RTM确实高于DAM则赚钱)
-    # Short spread收益 = -actual_spread (如果RTM确实低于DAM则赚钱)
+    # PnL per trade = signal * actual_spread
+    # Long spread PnL = actual_spread (profit if RTM is indeed higher than DAM)
+    # Short spread PnL = -actual_spread (profit if RTM is indeed lower than DAM)
     df['pnl'] = df['signal'] * df['actual_spread']
 
     return df
@@ -55,18 +55,18 @@ def strategy_binary(df: pd.DataFrame) -> pd.DataFrame:
 
 def strategy_binary_threshold(df: pd.DataFrame, prob_threshold: float = 0.6) -> pd.DataFrame:
     """
-    策略1b: 基于二分类模型 (带概率阈值)
+    Strategy 1b: Based on binary classification model (with probability threshold)
 
-    只在预测概率超过阈值时交易
+    Only trade when predicted probability exceeds the threshold
     """
     df = df.copy()
 
-    # 交易信号
+    # Trading signal
     df['signal'] = 0
     df.loc[df['pred_prob'] >= prob_threshold, 'signal'] = 1  # Long spread
     df.loc[df['pred_prob'] <= (1 - prob_threshold), 'signal'] = -1  # Short spread
 
-    # 收益
+    # PnL
     df['pnl'] = df['signal'] * df['actual_spread']
 
     return df
@@ -74,29 +74,29 @@ def strategy_binary_threshold(df: pd.DataFrame, prob_threshold: float = 0.6) -> 
 
 def strategy_multiclass(df: pd.DataFrame, trade_classes: list = [0, 4]) -> pd.DataFrame:
     """
-    策略2: 基于多分类模型
+    Strategy 2: Based on multi-class model
 
-    只在极端区间交易:
-    - 类别0 (< -$20): Short spread
-    - 类别4 (>= $20): Long spread
-    - 其他类别不交易
+    Only trade in extreme intervals:
+    - Class 0 (< -$20): Short spread
+    - Class 4 (>= $20): Long spread
+    - Other classes: no trade
     """
     df = df.copy()
 
-    # 交易信号
+    # Trading signal
     df['signal'] = 0
     if 0 in trade_classes:
-        df.loc[df['pred_class'] == 0, 'signal'] = -1  # Short spread (预测RTM大幅低于DAM)
+        df.loc[df['pred_class'] == 0, 'signal'] = -1  # Short spread (predict RTM significantly lower than DAM)
     if 4 in trade_classes:
-        df.loc[df['pred_class'] == 4, 'signal'] = 1   # Long spread (预测RTM大幅高于DAM)
+        df.loc[df['pred_class'] == 4, 'signal'] = 1   # Long spread (predict RTM significantly higher than DAM)
 
-    # 也可以交易轻度信号
+    # Can also trade moderate signals
     if 1 in trade_classes:
         df.loc[df['pred_class'] == 1, 'signal'] = -1  # Short spread
     if 3 in trade_classes:
         df.loc[df['pred_class'] == 3, 'signal'] = 1   # Long spread
 
-    # 收益
+    # PnL
     df['pnl'] = df['signal'] * df['actual_spread']
 
     return df
@@ -104,28 +104,28 @@ def strategy_multiclass(df: pd.DataFrame, trade_classes: list = [0, 4]) -> pd.Da
 
 def strategy_regression(df: pd.DataFrame, threshold: float = 5.0) -> pd.DataFrame:
     """
-    策略3: 基于回归模型
+    Strategy 3: Based on regression model
 
-    - 预测spread > threshold: Long spread
-    - 预测spread < -threshold: Short spread
-    - |预测spread| < threshold: 不交易
+    - Predicted spread > threshold: Long spread
+    - Predicted spread < -threshold: Short spread
+    - |predicted spread| < threshold: No trade
     """
     df = df.copy()
 
-    # 交易信号
+    # Trading signal
     df['signal'] = 0
     df.loc[df['pred_spread'] >= threshold, 'signal'] = 1   # Long spread
     df.loc[df['pred_spread'] <= -threshold, 'signal'] = -1  # Short spread
 
-    # 收益
+    # PnL
     df['pnl'] = df['signal'] * df['actual_spread']
 
     return df
 
 
 def calculate_metrics(df: pd.DataFrame, strategy_name: str) -> dict:
-    """计算策略绩效指标"""
-    # 只考虑实际交易的样本
+    """Calculate strategy performance metrics"""
+    # Only consider samples with actual trades
     trades = df[df['signal'] != 0].copy()
 
     if len(trades) == 0:
@@ -140,34 +140,34 @@ def calculate_metrics(df: pd.DataFrame, strategy_name: str) -> dict:
             'max_drawdown': 0
         }
 
-    # 基本统计
+    # Basic statistics
     total_trades = len(trades)
     total_pnl = trades['pnl'].sum()
     avg_pnl = trades['pnl'].mean()
 
-    # 胜率
+    # Win rate
     winning_trades = (trades['pnl'] > 0).sum()
     win_rate = winning_trades / total_trades
 
-    # 盈亏比
+    # Profit factor
     gross_profit = trades.loc[trades['pnl'] > 0, 'pnl'].sum()
     gross_loss = -trades.loc[trades['pnl'] < 0, 'pnl'].sum()
     profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
 
-    # 按日聚合计算Sharpe
+    # Aggregate by day to calculate Sharpe
     daily_pnl = df.groupby('date')['pnl'].sum()
     if daily_pnl.std() > 0:
         sharpe = np.sqrt(252) * daily_pnl.mean() / daily_pnl.std()
     else:
         sharpe = 0
 
-    # 最大回撤
+    # Maximum drawdown
     cumulative_pnl = trades['pnl'].cumsum()
     rolling_max = cumulative_pnl.expanding().max()
     drawdown = cumulative_pnl - rolling_max
     max_drawdown = drawdown.min()
 
-    # 按方向统计
+    # Statistics by direction
     long_trades = trades[trades['signal'] == 1]
     short_trades = trades[trades['signal'] == -1]
 
@@ -189,34 +189,34 @@ def calculate_metrics(df: pd.DataFrame, strategy_name: str) -> dict:
 
 def run_backtest(predictions_path: str, output_path: str = None) -> dict:
     """
-    运行所有策略的回测
+    Run backtest for all strategies
     """
     print("=" * 60)
-    print("RTM-DAM 套利策略回测")
+    print("RTM-DAM Arbitrage Strategy Backtest")
     print("=" * 60)
 
-    # 加载预测
-    print("\n1. 加载预测数据...")
+    # Load predictions
+    print("\n1. Loading prediction data...")
     df = load_predictions(predictions_path)
-    print(f"   样本数: {len(df):,}")
-    print(f"   时间范围: {df['timestamp'].min()} ~ {df['timestamp'].max()}")
+    print(f"   Sample count: {len(df):,}")
+    print(f"   Time range: {df['timestamp'].min()} ~ {df['timestamp'].max()}")
 
-    # 运行各策略
-    print("\n2. 运行策略回测...")
+    # Run each strategy
+    print("\n2. Running strategy backtests...")
     strategies = []
 
-    # 策略1: 二分类 (全部交易)
+    # Strategy 1: Binary classification (all trades)
     df_s1 = strategy_binary(df)
     metrics_s1 = calculate_metrics(df_s1, 'Binary (All)')
     strategies.append(metrics_s1)
 
-    # 策略1b: 二分类 (带阈值)
+    # Strategy 1b: Binary classification (with threshold)
     for threshold in [0.55, 0.6, 0.65, 0.7]:
         df_s1b = strategy_binary_threshold(df, threshold)
         metrics_s1b = calculate_metrics(df_s1b, f'Binary (prob>{threshold})')
         strategies.append(metrics_s1b)
 
-    # 策略2: 多分类 (只交易极端区间)
+    # Strategy 2: Multi-class (trade only extreme intervals)
     df_s2a = strategy_multiclass(df, trade_classes=[0, 4])
     metrics_s2a = calculate_metrics(df_s2a, 'Multiclass (classes 0,4)')
     strategies.append(metrics_s2a)
@@ -225,61 +225,61 @@ def run_backtest(predictions_path: str, output_path: str = None) -> dict:
     metrics_s2b = calculate_metrics(df_s2b, 'Multiclass (classes 0,1,3,4)')
     strategies.append(metrics_s2b)
 
-    # 策略3: 回归 (带阈值)
+    # Strategy 3: Regression (with threshold)
     for threshold in [3, 5, 10, 15]:
         df_s3 = strategy_regression(df, threshold)
         metrics_s3 = calculate_metrics(df_s3, f'Regression (|pred|>{threshold})')
         strategies.append(metrics_s3)
 
-    # 基准策略: 总是Short spread (因为RTM通常低于DAM)
+    # Baseline strategy: Always Short spread (since RTM is typically lower than DAM)
     df_baseline = df.copy()
     df_baseline['signal'] = -1
     df_baseline['pnl'] = -df_baseline['actual_spread']
     metrics_baseline = calculate_metrics(df_baseline, 'Baseline (Always Short)')
     strategies.append(metrics_baseline)
 
-    # 汇总结果
+    # Summarize results
     results_df = pd.DataFrame(strategies)
 
-    print("\n3. 策略绩效对比")
+    print("\n3. Strategy Performance Comparison")
     print("=" * 100)
-    print(f"{'策略':<35} {'交易数':>8} {'总PnL':>12} {'平均PnL':>10} {'胜率':>8} {'盈亏比':>8} {'Sharpe':>8}")
+    print(f"{'Strategy':<35} {'Trades':>8} {'Total PnL':>12} {'Avg PnL':>10} {'Win Rate':>8} {'Profit Factor':>8} {'Sharpe':>8}")
     print("-" * 100)
     for _, row in results_df.iterrows():
         print(f"{row['strategy']:<35} {row['total_trades']:>8,} {row['total_pnl']:>12,.0f} {row['avg_pnl_per_trade']:>10.2f} {row['win_rate']*100:>7.1f}% {row['profit_factor']:>8.2f} {row['sharpe_ratio']:>8.2f}")
 
-    # 保存结果
+    # Save results
     if output_path:
         results_df.to_csv(output_path, index=False)
-        print(f"\n结果已保存: {output_path}")
+        print(f"\nResults saved: {output_path}")
 
-    # 打印最佳策略
+    # Print best strategy
     best_strategy = results_df.loc[results_df['total_pnl'].idxmax()]
-    print(f"\n最佳策略: {best_strategy['strategy']}")
-    print(f"  总收益: ${best_strategy['total_pnl']:,.0f}")
-    print(f"  胜率: {best_strategy['win_rate']*100:.1f}%")
+    print(f"\nBest strategy: {best_strategy['strategy']}")
+    print(f"  Total return: ${best_strategy['total_pnl']:,.0f}")
+    print(f"  Win rate: {best_strategy['win_rate']*100:.1f}%")
     print(f"  Sharpe: {best_strategy['sharpe_ratio']:.2f}")
 
     return results_df
 
 
 def analyze_by_period(predictions_path: str) -> None:
-    """按时间段分析策略表现"""
+    """Analyze strategy performance by time period"""
     df = load_predictions(predictions_path)
 
-    # 使用最佳策略 (回归模型阈值5)
+    # Use best strategy (regression model threshold 5)
     df = strategy_regression(df, threshold=5)
 
-    # 按月份分析
+    # Analyze by month
     df['month'] = df['timestamp'].dt.to_period('M')
     monthly_pnl = df.groupby('month')['pnl'].sum()
 
-    print("\n月度收益:")
+    print("\nMonthly returns:")
     print(monthly_pnl.tail(24))
 
-    # 按小时分析
+    # Analyze by hour
     hourly_pnl = df.groupby(df['timestamp'].dt.hour)['pnl'].mean()
-    print("\n按小时平均收益:")
+    print("\nAverage return by hour:")
     print(hourly_pnl)
 
 
