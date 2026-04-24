@@ -311,6 +311,12 @@ footer a:hover {
   color: #fff;
 }
 
+.main-nav-link.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ===== Predictions Dashboard Dark Theme ===== */
 .dash-container {
   max-width: 1800px;

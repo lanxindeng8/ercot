@@ -126,7 +126,25 @@ export default function PriceChart() {
                   return [`$${Number(value).toFixed(2)}`, ""];
                 }}
               />
-              <Legend />
+              <Legend
+                content={({ payload }) => (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 24, paddingTop: 8 }}>
+                    {payload?.map((entry) => (
+                      <div key={entry.value} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <svg width="24" height="12">
+                          <line
+                            x1="0" y1="6" x2="24" y2="6"
+                            stroke={entry.color}
+                            strokeWidth={2}
+                            strokeDasharray={entry.payload?.strokeDasharray || "0"}
+                          />
+                        </svg>
+                        <span style={{ color: "#ccc", fontSize: 13 }}>{entry.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              />
               <Line
                 type="monotone"
                 dataKey="rtmActual"
